@@ -1,13 +1,20 @@
 use fmt::Formatter;
-use std::{fmt, intrinsics::transmute};
+use std::{fmt, intrinsics::transmute, slice::Iter};
 
 pub type Number = f64;
+pub type ConstantIndex = u8;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(u8)]
-pub enum OpCode {
+pub enum ByteCode {
     Return,
     Constant,
+}
+
+#[derive(Debug)]
+pub enum Instruction {
+    Return,
+    Constant(ConstantIndex),
 }
 
 pub struct Chunk {
@@ -16,8 +23,44 @@ pub struct Chunk {
     values: Vec<Value>,
 }
 
+#[derive(Clone, Debug)]
 pub enum Value {
     Number(Number),
+}
+
+pub struct ChunkIterator<'a>(Iter<'a, u8>);
+
+impl Iterator for ChunkIterator<'_> {
+    type Item = Instruction;
+    fn next(&mut self) -> Option<Self::Item> {
+        
+        let byte_code: ByteCode = (*self.0.next()?).into();
+        match byte_code {
+            ByteCode::Return => Some(Instruction::Return),
+            ByteCode::Constant => Some(Instruction::Constant(*self.0.next()?))
+        }
+    }
+}
+
+// impl From<&Instruction> for ByteCode {
+//     fn from(instr: &Instruction) -> Self {
+//         match instr {
+//             Instruction::Return => ByteCode::Return,
+//             Instruction::Constant(_) => ByteCode::Constant
+//         }
+//     }
+// }
+
+impl From<u8> for ByteCode {
+    fn from(byte: u8) -> Self {
+        unsafe { transmute::<_, Self>(byte) }
+    }
+}
+
+impl From<ByteCode> for u8 {
+    fn from(byte_code: ByteCode) -> Self {
+        byte_code as u8
+    }
 }
 
 impl fmt::Display for Value {
@@ -28,7 +71,13 @@ impl fmt::Display for Value {
     }
 }
 
-impl fmt::Display for OpCode {
+impl fmt::Display for ByteCode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
@@ -43,63 +92,54 @@ impl Chunk {
         }
     }
 
-    pub fn disassemble(&self, chunk_name: &str) -> String {
-        format!(
-            "== {} ==
-{}",
-            chunk_name, self
-        )
-    }
-
-    // This assumes that the u8 opcode is valid according to the OpCode to discriminator mapping
-    pub fn disassemble_instruction(&self, offset: usize) -> (String, usize) {
-        let opcode = unsafe { transmute::<u8, OpCode>(self.code[offset]) };
-        let mut new_offset = offset + 1;
-        let mut extension = "".to_owned();
-        match opcode {
-            OpCode::Constant => {
-                let const_index = self.code[offset + 1];
-                let const_val = &self.values[const_index as usize];
-                extension = format!(" {} {}", const_index, const_val);
-                new_offset += 1;
-            }
-            _ => {}
-        };
-        let line_num = if offset == 0 || self.lines[offset] != self.lines[offset - 1] {
-            self.lines[offset].to_string()
-        } else {
-            "|".to_string()
-        };
-        (
-            format!("{:0>4} {: >4} {}{}", offset, line_num, opcode, extension),
-            new_offset,
-        )
-    }
-
-    pub fn add_instruction(&mut self, opcode: OpCode, line: usize) {
-        self.add_byte(opcode as u8, line)
-    }
-
-    pub fn add_byte(&mut self, byte: u8, line: usize) {
-        self.code.push(byte);
+    pub fn add_instruction(&mut self, instr: Instruction, line: usize) {
         self.lines.push(line);
+
+        match instr {
+            Instruction::Return => self.code.push(ByteCode::Return.into()),
+            Instruction::Constant(const_index) => {
+                self.code.push(ByteCode::Constant.into());
+                self.code.push(const_index);
+            }
+        }
     }
 
     pub fn add_value(&mut self, value: Value) -> u8 {
         self.values.push(value);
         (self.values.len() - 1) as u8
     }
+
+    pub fn get_value(&self, index: u8) -> Value {
+        self.values[index as usize]
+    }
+
+    pub fn instr_iter(&self) -> ChunkIterator {
+        ChunkIterator(self.code.iter())
+    }
 }
 
 impl fmt::Display for Chunk {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut offset = 0;
         let mut instrs = "".to_owned();
-        while offset < self.code.len() {
-            let (instruction, new_offset) = self.disassemble_instruction(offset);
-            instrs.push_str(&instruction);
-            instrs.push('\n');
-            offset = new_offset;
+        let mut chunk_iter = self.instr_iter().enumerate();
+        while let Some((index, instruction)) = chunk_iter.next() {
+            let line_str = if index == 0 || self.lines[index] != self.lines[index - 1] {
+                self.lines[index].to_string()
+            } else {
+                "|".to_owned()
+            };
+
+            let mut extension = "".to_owned();
+
+            match instruction {
+                Instruction::Constant(const_index) => {
+                    extension = self.values[const_index as usize].to_string();
+                },
+                _ => {}
+            };
+
+            let opcode_view = format!("{:0>4} {: >4} {} {}\n", index, line_str, instruction, extension);
+            instrs.push_str(&opcode_view);
         }
 
         write!(f, "{}\n", instrs)
