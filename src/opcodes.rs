@@ -9,12 +9,14 @@ pub type ConstantIndex = u8;
 pub enum ByteCode {
     Return,
     Constant,
+    Negate,
 }
 
 #[derive(Debug)]
 pub enum Instruction {
     Return,
     Constant(ConstantIndex),
+    Negate,
 }
 
 pub struct Chunk {
@@ -23,7 +25,7 @@ pub struct Chunk {
     values: Vec<Value>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum Value {
     Number(Number),
 }
@@ -33,11 +35,11 @@ pub struct ChunkIterator<'a>(Iter<'a, u8>);
 impl Iterator for ChunkIterator<'_> {
     type Item = Instruction;
     fn next(&mut self) -> Option<Self::Item> {
-        
         let byte_code: ByteCode = (*self.0.next()?).into();
         match byte_code {
             ByteCode::Return => Some(Instruction::Return),
-            ByteCode::Constant => Some(Instruction::Constant(*self.0.next()?))
+            ByteCode::Constant => Some(Instruction::Constant(*self.0.next()?)),
+            ByteCode::Negate => Some(Instruction::Negate),
         }
     }
 }
@@ -101,6 +103,7 @@ impl Chunk {
                 self.code.push(ByteCode::Constant.into());
                 self.code.push(const_index);
             }
+            Instruction::Negate => self.code.push(ByteCode::Negate.into()),
         }
     }
 
@@ -116,6 +119,25 @@ impl Chunk {
     pub fn instr_iter(&self) -> ChunkIterator {
         ChunkIterator(self.code.iter())
     }
+
+    pub fn disassemble_instruction(&self, index: usize, instr: &Instruction) -> String {
+        let line_str = if index == 0 || self.lines[index] != self.lines[index - 1] {
+            self.lines[index].to_string()
+        } else {
+            "|".to_owned()
+        };
+
+        let mut extension = "".to_owned();
+
+        match instr {
+            Instruction::Constant(const_index) => {
+                extension = self.values[*const_index as usize].to_string();
+            }
+            _ => {}
+        };
+
+        return format!("{:0>4} {: >4} {} {}", index, line_str, instr, extension);
+    }
 }
 
 impl fmt::Display for Chunk {
@@ -123,25 +145,11 @@ impl fmt::Display for Chunk {
         let mut instrs = "".to_owned();
         let mut chunk_iter = self.instr_iter().enumerate();
         while let Some((index, instruction)) = chunk_iter.next() {
-            let line_str = if index == 0 || self.lines[index] != self.lines[index - 1] {
-                self.lines[index].to_string()
-            } else {
-                "|".to_owned()
-            };
-
-            let mut extension = "".to_owned();
-
-            match instruction {
-                Instruction::Constant(const_index) => {
-                    extension = self.values[const_index as usize].to_string();
-                },
-                _ => {}
-            };
-
-            let opcode_view = format!("{:0>4} {: >4} {} {}\n", index, line_str, instruction, extension);
+            let opcode_view = self.disassemble_instruction(index, &instruction);
             instrs.push_str(&opcode_view);
+            instrs.push('\n');
         }
 
-        write!(f, "{}\n", instrs)
+        write!(f, "{}", instrs)
     }
 }

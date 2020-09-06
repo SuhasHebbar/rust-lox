@@ -1,32 +1,54 @@
-use crate::opcodes::{Chunk, Instruction};
+use crate::opcodes::{Chunk, Instruction, Value};
+
+const STACK_MIN_SIZE: usize = 256;
+
 pub struct Vm {
     chunk: Chunk,
+    stack: Vec<Value>,
 }
 
-enum InterpreterResult {
+pub enum InterpreterResult {
     Ok,
     CompileError,
     RuntimeError,
 }
 
 impl Vm {
-    fn interpret(&mut self, chunk: Chunk) -> InterpreterResult {
-        self.chunk = chunk;
-        return self.run();
+    pub fn new(chunk: Chunk) -> Self {
+        Vm {
+            chunk,
+            stack: Vec::with_capacity(STACK_MIN_SIZE),
+        }
     }
 
-    fn run(&mut self) -> InterpreterResult {
-        let mut instr_iter = self.chunk.instr_iter();
-        while let Some(instr) = instr_iter.next() {
+    pub fn clear_stack(&mut self) {
+        self.stack.clear();
+    }
+
+    pub fn run(&mut self) -> InterpreterResult {
+        let mut instr_iter = self.chunk.instr_iter().enumerate();
+        while let Some((index, instr)) = instr_iter.next() {
+            #[cfg(feature = "lox_debug")]
+            {
+                println!("{}", self.chunk.disassemble_instruction(index, &instr));
+            }
+
             match instr {
                 Instruction::Return => {
+                    
+                    println!("return {}", self.stack.pop().unwrap());
                     return InterpreterResult::Ok;
-                },
+                }
                 Instruction::Constant(cin) => {
                     let constant = self.chunk.get_value(cin);
-                    dbg!(constant);
-                    break;
-                }
+                    self.stack.push(constant);
+                    println!("{}", constant);
+                },
+                Instruction::Negate => {
+                    let Value::Number(head) = self.stack.last_mut().unwrap();
+                    *head = -*head;
+
+                },
             };
         }
 
