@@ -1,4 +1,5 @@
-use crate::opcodes::{Chunk, Instruction, Value};
+use crate::opcodes::{Chunk, Instruction, Value, Number};
+use std::ops::{Add, Sub, Mul, Div};
 
 const STACK_MIN_SIZE: usize = 256;
 
@@ -49,9 +50,27 @@ impl Vm {
                     *head = -*head;
 
                 },
+                Instruction::Add => {
+                    perform_binary_op(&mut self.stack, Number::add);
+                },
+                Instruction::Subtract => {
+                    perform_binary_op(&mut self.stack, Number::sub);
+                },
+                Instruction::Multiple => {
+                    perform_binary_op(&mut self.stack, Number::mul);
+                },
+                Instruction::Divide => {
+                    perform_binary_op(&mut self.stack, Number::div);
+                }
             };
         }
 
         return InterpreterResult::Ok;
     }
+
+}
+
+fn perform_binary_op(stack: &mut Vec<Value>, op: impl Fn(Number, Number) -> Number) {
+    let (Value::Number(rhs), Value::Number(lhs)) = (stack.pop().unwrap(), stack.pop().unwrap());
+    stack.push(Value::Number(op(lhs, rhs)));
 }

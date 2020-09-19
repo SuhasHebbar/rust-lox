@@ -9,14 +9,25 @@ pub type ConstantIndex = u8;
 pub enum ByteCode {
     Return,
     Constant,
+
     Negate,
+    Add,
+    Subtract,
+    Multiple,
+    Divide
 }
 
 #[derive(Debug)]
 pub enum Instruction {
     Return,
     Constant(ConstantIndex),
+
     Negate,
+    Add,
+    Subtract,
+    Multiple,
+    Divide
+
 }
 
 pub struct Chunk {
@@ -40,6 +51,10 @@ impl Iterator for ChunkIterator<'_> {
             ByteCode::Return => Some(Instruction::Return),
             ByteCode::Constant => Some(Instruction::Constant(*self.0.next()?)),
             ByteCode::Negate => Some(Instruction::Negate),
+            ByteCode::Add => Some(Instruction::Add),
+            ByteCode::Subtract => Some(Instruction::Subtract),
+            ByteCode::Multiple => Some(Instruction::Multiple),
+            ByteCode::Divide => Some(Instruction::Divide)
         }
     }
 }
@@ -104,6 +119,10 @@ impl Chunk {
                 self.code.push(const_index);
             }
             Instruction::Negate => self.code.push(ByteCode::Negate.into()),
+            Instruction::Add => self.code.push(ByteCode::Add.into()),
+            Instruction::Subtract => self.code.push(ByteCode::Subtract.into()),
+            Instruction::Multiple => self.code.push(ByteCode::Multiple.into()),
+            Instruction::Divide => self.code.push(ByteCode::Divide.into())
         }
     }
 
