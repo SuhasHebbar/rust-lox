@@ -1,8 +1,7 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
 use syn::{
-    parse_macro_input, Data, DeriveInput, Fields, FieldsUnnamed, Ident, Path, PathSegment, Type,
-    TypePath,
+    parse_macro_input, Data, DeriveInput, Fields, FieldsUnnamed, Ident, Path, Type, TypePath,
 };
 
 extern crate proc_macro;
@@ -10,12 +9,8 @@ extern crate proc_macro;
 #[proc_macro_derive(ByteCodeEncodeDecode)]
 pub fn binary_encode_decode(item: TokenStream) -> TokenStream {
     let ast = parse_macro_input!(item as DeriveInput);
-    dbg!(&ast);
-    // gen_enum(&ast)
     let a = impl_binary_encode_decode(&ast);
-    // dbg!(&a);
     a
-    // "".parse().unwrap()
 }
 
 fn impl_binary_encode_decode(ast: &DeriveInput) -> TokenStream {
@@ -69,11 +64,9 @@ fn gen_encode(enum_: &Ident, variants: &Vec<(&Ident, Vec<&Ident>)>) -> proc_macr
         .enumerate()
         .map(|(i, (ident, fields))| {
             let field_ids: Vec<_> = (0..fields.len()).map(|a| format_ident!("a{}", a)).collect();
-            // let tuple_vals = quote! { #(#field_id),* };
             let other_pushes = field_ids.iter().map(
                 |tup_field_id| quote! { dest.extend_from_slice(&#tup_field_id.to_ne_bytes()[..]); },
             );
-            // let enum_variant = format_ident!("{}::{}", enum_, ident);
             let enum_args = if field_ids.is_empty() {
                 quote! {}
             } else {
@@ -109,14 +102,11 @@ fn gen_decode(enum_: &Ident, variants: &Vec<(&Ident, Vec<&Ident>)>) -> proc_macr
                 .iter()
                 .zip(fields)
                 .map(|(var, type_)| {
-                    // let decode_fn = format_ident!("decode_{}", type_);
                     quote! {
                         let #var = #type_::decode(&mut slice_ptr);
                     }
                 })
                 .collect();
-
-            // let enum_variant = format_ident!("{}::{}", enum_, ident);
 
             let enum_args = if field_ids.is_empty() {
                 quote! {}
