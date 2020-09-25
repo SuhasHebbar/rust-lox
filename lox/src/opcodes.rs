@@ -1,8 +1,17 @@
 use fmt::Formatter;
-use std::{fmt, intrinsics::transmute, slice::Iter};
+use std::{fmt, intrinsics::transmute, slice::Iter, convert::TryInto};
 
 pub type Number = f64;
 pub type ConstantIndex = u8;
+
+
+trait ByteCodeEncodeDecode: Sized {
+    fn encode(&self, dest: &mut Vec<u8>);
+    fn decode(src: &[u8]) -> (Self, &[u8]);
+}
+
+use lox_macros::ByteCodeEncodeDecode;
+
 
 #[derive(Debug, Clone)]
 #[repr(u8)]
@@ -17,7 +26,8 @@ pub enum ByteCode {
     Divide
 }
 
-#[derive(Debug)]
+
+#[derive(Debug, ByteCodeEncodeDecode)]
 pub enum Instruction {
     Return,
     Constant(ConstantIndex),
@@ -170,5 +180,27 @@ impl fmt::Display for Chunk {
         }
 
         write!(f, "{}", instrs)
+    }
+}
+
+trait Decode {
+    fn decode(slice_ptr: &mut &[u8]) -> Self;
+}
+
+impl Decode for u32 {
+    fn decode(slice_ptr: &mut &[u8]) -> Self {
+        let (val, tmp) = slice_ptr.split_at(4);
+        *slice_ptr = tmp;
+        let val: [u8; 4] = val.try_into().expect("slice of incorrect length.");
+        return u32::from_ne_bytes(val);
+    }
+}
+
+impl Decode for u8 {
+    fn decode(slice_ptr: &mut &[u8]) -> Self {
+        let (val, tmp) = slice_ptr.split_at(1);
+        *slice_ptr = tmp;
+        let val: [u8; 1] = val.try_into().expect("slice of incorrect length.");
+        return u8::from_ne_bytes(val);
     }
 }

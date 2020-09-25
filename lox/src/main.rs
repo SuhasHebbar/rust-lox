@@ -1,4 +1,4 @@
-use rust_lox::{
+use lox::{
     opcodes::{Chunk, Instruction, Number, Value},
     vm::Vm,
 };
