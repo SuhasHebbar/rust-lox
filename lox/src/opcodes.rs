@@ -1,31 +1,14 @@
 use fmt::Formatter;
-use std::{fmt, intrinsics::transmute, slice::Iter, convert::TryInto};
+use std::{convert::TryInto, fmt};
 
 pub type Number = f64;
 pub type ConstantIndex = u8;
-
 
 trait ByteCodeEncodeDecode: Sized {
     fn encode(&self, dest: &mut Vec<u8>);
     fn decode(src: &[u8]) -> (Self, &[u8]);
 }
-
 use lox_macros::ByteCodeEncodeDecode;
-
-
-#[derive(Debug, Clone)]
-#[repr(u8)]
-pub enum ByteCode {
-    Return,
-    Constant,
-
-    Negate,
-    Add,
-    Subtract,
-    Multiple,
-    Divide
-}
-
 
 #[derive(Debug, ByteCodeEncodeDecode)]
 pub enum Instruction {
@@ -36,8 +19,7 @@ pub enum Instruction {
     Add,
     Subtract,
     Multiple,
-    Divide
-
+    Divide,
 }
 
 pub struct Chunk {
@@ -51,42 +33,19 @@ pub enum Value {
     Number(Number),
 }
 
-pub struct ChunkIterator<'a>(Iter<'a, u8>);
+pub struct ChunkIterator<'a>(&'a [u8]);
 
 impl Iterator for ChunkIterator<'_> {
     type Item = Instruction;
     fn next(&mut self) -> Option<Self::Item> {
-        let byte_code: ByteCode = (*self.0.next()?).into();
-        match byte_code {
-            ByteCode::Return => Some(Instruction::Return),
-            ByteCode::Constant => Some(Instruction::Constant(*self.0.next()?)),
-            ByteCode::Negate => Some(Instruction::Negate),
-            ByteCode::Add => Some(Instruction::Add),
-            ByteCode::Subtract => Some(Instruction::Subtract),
-            ByteCode::Multiple => Some(Instruction::Multiple),
-            ByteCode::Divide => Some(Instruction::Divide)
+        if self.0.is_empty() {
+            None
+        } else {
+            let (instr, tmp) = Instruction::decode(self.0);
+            self.0 = tmp;
+
+            Some(instr)
         }
-    }
-}
-
-// impl From<&Instruction> for ByteCode {
-//     fn from(instr: &Instruction) -> Self {
-//         match instr {
-//             Instruction::Return => ByteCode::Return,
-//             Instruction::Constant(_) => ByteCode::Constant
-//         }
-//     }
-// }
-
-impl From<u8> for ByteCode {
-    fn from(byte: u8) -> Self {
-        unsafe { transmute::<_, Self>(byte) }
-    }
-}
-
-impl From<ByteCode> for u8 {
-    fn from(byte_code: ByteCode) -> Self {
-        byte_code as u8
     }
 }
 
@@ -95,12 +54,6 @@ impl fmt::Display for Value {
         match self {
             Value::Number(num) => write!(f, "{}", num),
         }
-    }
-}
-
-impl fmt::Display for ByteCode {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
     }
 }
 
@@ -121,19 +74,7 @@ impl Chunk {
 
     pub fn add_instruction(&mut self, instr: Instruction, line: usize) {
         self.lines.push(line);
-
-        match instr {
-            Instruction::Return => self.code.push(ByteCode::Return.into()),
-            Instruction::Constant(const_index) => {
-                self.code.push(ByteCode::Constant.into());
-                self.code.push(const_index);
-            }
-            Instruction::Negate => self.code.push(ByteCode::Negate.into()),
-            Instruction::Add => self.code.push(ByteCode::Add.into()),
-            Instruction::Subtract => self.code.push(ByteCode::Subtract.into()),
-            Instruction::Multiple => self.code.push(ByteCode::Multiple.into()),
-            Instruction::Divide => self.code.push(ByteCode::Divide.into())
-        }
+        instr.encode(&mut self.code);
     }
 
     pub fn add_value(&mut self, value: Value) -> u8 {
@@ -146,7 +87,7 @@ impl Chunk {
     }
 
     pub fn instr_iter(&self) -> ChunkIterator {
-        ChunkIterator(self.code.iter())
+        ChunkIterator(&self.code[..])
     }
 
     pub fn disassemble_instruction(&self, index: usize, instr: &Instruction) -> String {

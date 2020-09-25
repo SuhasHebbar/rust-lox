@@ -8,7 +8,7 @@ use rustyline::Config;
 
 const history_save_path: &str = ".lox_history";
 
-fn tear() {
+fn main() {
     let mut chunk = Chunk::new();
 
     let lhs = chunk.add_value(Value::Number(45.3 as Number));
@@ -19,13 +19,13 @@ fn tear() {
     chunk.add_instruction(Instruction::Subtract, 1);
     chunk.add_instruction(Instruction::Return, 1);
 
-    // println!("{}", &chunk);
+    println!("{}", &chunk);
 
     let mut vm = Vm::new(chunk);
     vm.run();
 }
 
-fn main() {
+fn main2() {
     let rl_config = Config::builder()
         .history_ignore_dups(true)
         .max_history_size(1000)
