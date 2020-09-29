@@ -72,6 +72,8 @@ impl Chunk {
         }
     }
 
+    // TODO: Add method to add multiple instructions. Maybe reserve space in vector in advance.
+
     pub fn add_instruction(&mut self, instr: Instruction, line: usize) {
         self.lines.push(line);
         instr.encode(&mut self.code);
@@ -97,13 +99,11 @@ impl Chunk {
             "|".to_owned()
         };
 
-        let mut extension = "".to_owned();
-
-        match instr {
+        let extension = match instr {
             Instruction::Constant(const_index) => {
-                extension = self.values[*const_index as usize].to_string();
+                self.values[*const_index as usize].to_string()
             }
-            _ => {}
+            _ => {"".to_owned()}
         };
 
         return format!("{:0>4} {: >4} {} {}", index, line_str, instr, extension);
