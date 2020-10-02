@@ -4,7 +4,7 @@ use rustyline::{Config, error::ReadlineError};
 use crate::interpreter::{Interpreter, InterpreterResult};
 use std::process;
 
-fn runFile(file_path: &str) {
+pub fn runFile(file_path: &str) {
     let mut file = File::open(file_path).expect("Failed to open file");
 
     let mut content = String::new();

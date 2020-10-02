@@ -1,3 +1,5 @@
+use crate::scanner::{Scanner, TokenType as T};
+
 pub enum InterpreterResult {
     Ok,
     CompileError,
@@ -18,6 +20,23 @@ impl Interpreter {
     }
 
     fn compile(&mut self, source: &str) {
-        todo!()
+        let scanner = Scanner::new(source);
+        let mut line = 0;
+
+        for token in scanner {
+            if token.line != line {
+                line = token.line;
+                print!("{: >4} ", line);
+            } else {
+                print!("   | ");
+            }
+
+            println!("{:?}", token);
+
+            if let T::EOF = token.kind {
+                break;
+            }
+        }
+
     }
 }
