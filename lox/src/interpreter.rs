@@ -1,4 +1,4 @@
-use crate::scanner::{Scanner, TokenType as T};
+use crate::{opcodes::Chunk, scanner::{Scanner, TokenType as T}};
 
 pub enum InterpreterResult {
     Ok,
@@ -6,20 +6,40 @@ pub enum InterpreterResult {
     RuntimeError,
 }
 
-pub struct Interpreter {}
+pub struct Interpreter {
+    chunk: Chunk
+}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Interpreter {}
+        Interpreter {
+            chunk: Chunk::new()
+        }
     }
 
     pub fn interpret(&mut self, source: &str) -> InterpreterResult {
-        self.compile(source);
+        if !self.compile(source) {
+            return InterpreterResult::CompileError;
+        }
+
+        return self.run();
 
         InterpreterResult::Ok
     }
 
-    fn compile(&mut self, source: &str) {
+    fn compile(&mut self, source: &str) -> bool {
+        let scanner = Scanner::new(source);
+//         advance();
+//   expression();
+//   consume(TOKEN_EOF, "Expect end of expression.");
+        todo!()
+    }
+
+    fn run(&mut self) -> InterpreterResult {
+        todo!()
+    }
+
+    fn print_tokens(&mut self, source: &str) {
         let scanner = Scanner::new(source);
         let mut line = 0;
 

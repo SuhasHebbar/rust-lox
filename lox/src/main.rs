@@ -24,12 +24,12 @@ use lox::repl::{repl, runFile};
 fn main() {
     let args: Vec<_> = env::args().collect();
 
-        runFile("main.lox");
+        // runFile("main.lox");
 
-    // if args.len() == 1 {
-    //     repl()
-    // } else {
-    //     runFile(&args[1])
-    // }
+    if args.len() == 1 {
+        repl()
+    } else {
+        runFile(&args[1])
+    }
 }
 
