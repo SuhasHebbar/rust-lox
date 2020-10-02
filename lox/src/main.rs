@@ -1,14 +1,14 @@
 use lox::{
     opcodes::{Chunk, Instruction, Number, Value},
-    vm::Vm,
+    vm::Vm, repl::repl,
 };
 
 use rustyline::error::ReadlineError;
 use rustyline::Config;
+use std::env;
 
-const history_save_path: &str = ".lox_history";
 
-fn main() {
+fn main2() {
     let mut chunk = Chunk::new();
 
     let lhs = chunk.add_value(Value::Number(45.3 as Number));
@@ -25,31 +25,13 @@ fn main() {
     vm.run();
 }
 
-fn main2() {
-    let rl_config = Config::builder()
-        .history_ignore_dups(true)
-        .max_history_size(1000)
-        .build();
-    let mut rl = rustyline::Editor::<()>::with_config(rl_config);
+fn main() {
+    let args: Vec<_> = env::args().collect();
 
-    if rl.load_history(history_save_path).is_err() {
-        println!("Failed to find previous history.");
+    if (args.len() == 1) {
+        repl()
+    } else {
+
     }
-
-    loop {
-        let readline = rl.readline(">> ");
-        match readline {
-            Ok(line) => {
-                rl.add_history_entry(line.as_str());
-                println!("Printed line: {}", line);
-            }
-            Err(ReadlineError::Interrupted) => {
-                println!("CTRL-C");
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    rl.save_history(history_save_path).unwrap();
 }
+
