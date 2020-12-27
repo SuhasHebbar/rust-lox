@@ -1,6 +1,6 @@
 use crate::{
     opcodes::{ConstantIndex, Number},
-    precedence::Precedence,
+    precedence::{parse_rule, Precedence},
 };
 use std::todo;
 
@@ -74,15 +74,25 @@ impl<'a> Compiler<'a> {
     }
 
     fn error_at_current(&mut self, message: &str) {
-        self.error_at(&self.current, message);
+        Self::error_at(
+            &mut self.had_error,
+            &mut self.panic_mode,
+            &self.current,
+            message,
+        );
     }
 
     fn error_at_previous(&mut self, message: &str) {
-        self.error_at(&self.previous, message);
+        Self::error_at(
+            &mut self.had_error,
+            &mut self.panic_mode,
+            &self.previous,
+            message,
+        );
     }
 
-    fn error_at(&mut self, token: &Token, message: &str) {
-        if self.panic_mode {
+    fn error_at(had_error: &mut bool, panic_mode: &mut bool, token: &Token, message: &str) {
+        if *panic_mode {
             return;
         }
 
@@ -95,8 +105,8 @@ impl<'a> Compiler<'a> {
         }
 
         eprint!(": {}\n", message);
-        self.had_error = true;
-        self.panic_mode = true;
+        *had_error = true;
+        *panic_mode = true;
     }
 
     fn current_chunk(&mut self) -> &mut Chunk {
@@ -153,6 +163,18 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn binary(&mut self) {
+        let op_type = self.previous.kind;
+
+        let prule = parse_rule(op_type);
+        self.parse_precedence(prule.precedence.next_greater());
+
+        match op_type {
+            TokenType::Plus => self.emit_instruction(Instruction::Add),
+            TokenType::Minus => self.emit_instruction(Instruction::Subtract),
+            TokenType::Star => self.emit_instruction(Instruction::Multiply),
+            TokenType::Slash => self.emit_instruction(Instruction::Divide),
+            _ => panic!("Unsupported binary operator {:?}", op_type),
+        }
         // do nothing
     }
 

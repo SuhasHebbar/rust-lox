@@ -56,7 +56,7 @@ impl Vm {
                 Instruction::Subtract => {
                     perform_binary_op(&mut self.stack, Number::sub);
                 },
-                Instruction::Multiple => {
+                Instruction::Multiply => {
                     perform_binary_op(&mut self.stack, Number::mul);
                 },
                 Instruction::Divide => {

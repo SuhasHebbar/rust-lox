@@ -18,7 +18,7 @@ pub enum Instruction {
     Negate,
     Add,
     Subtract,
-    Multiple,
+    Multiply,
     Divide,
 }
 
