@@ -94,10 +94,13 @@ impl<'a> Scanner<'a> {
                         if let Some((_, '/')) = self.curr.peek_twice() {
                             self.curr.next();
                             self.curr.next();
-                            while !self.is_at_end() && self.match_char('\n') {
+                            while !self.is_at_end() && !self.match_char('\n') {
                                 self.curr.next();
                             }
+                        } else {
+                            break;
                         }
+                        
                     }
                     _ => {
                         break;

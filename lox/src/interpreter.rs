@@ -3,17 +3,17 @@ use crate::{compiler::Compiler, opcodes::Chunk, scanner::{Scanner, TokenType as 
 pub enum InterpreterResult {
     Ok,
     CompileError,
-    RunttimeError,
+    RuntimeError,
 }
 
 pub struct Interpreter {
-    chunk: Chunk
+    chunk: Option<Chunk>
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Interpreter {
-            chunk: Chunk::new()
+            chunk: None
         }
     }
 
@@ -26,15 +26,15 @@ impl Interpreter {
     }
 
     fn compile(&mut self, source: &str) -> bool {
-        let compiler = Compiler::new(source);
+        let mut compiler = Compiler::new(source);
         let compiler_res = compiler.compile();
-        self.chunk = compiler.chunk;
+        self.chunk = Some(compiler.chunk);
 
         compiler_res
     }
 
     fn run(&mut self) -> InterpreterResult {
-        let vm = Vm::new(self.chunk);
+        let mut vm = Vm::new(self.chunk.take().unwrap());
         vm.run()
     }
 
