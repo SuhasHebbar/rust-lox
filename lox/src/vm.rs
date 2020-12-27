@@ -1,4 +1,4 @@
-use crate::opcodes::{Chunk, Instruction, Value, Number};
+use crate::{interpreter::InterpreterResult, opcodes::{Chunk, Instruction, Value, Number}};
 use std::ops::{Add, Sub, Mul, Div};
 
 const STACK_MIN_SIZE: usize = 256;
@@ -6,12 +6,6 @@ const STACK_MIN_SIZE: usize = 256;
 pub struct Vm {
     chunk: Chunk,
     stack: Vec<Value>,
-}
-
-pub enum InterpreterResult {
-    Ok,
-    CompileError,
-    RuntimeError,
 }
 
 impl Vm {

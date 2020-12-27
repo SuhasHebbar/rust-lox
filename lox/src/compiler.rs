@@ -1,8 +1,5 @@
-use crate::{
-    opcodes::{ConstantIndex, Number},
-    precedence::{parse_rule, Precedence},
-};
-use std::todo;
+use crate::{opcodes::{ConstantIndex, Number}, precedence::{PLACEHOLDER_PARSEFN, Precedence, parse_rule}};
+use std::{ptr, todo};
 
 use crate::{
     opcodes::Chunk,
@@ -19,11 +16,11 @@ pub struct Compiler<'a> {
     current: Token<'a>,
     had_error: bool,
     panic_mode: bool,
-    chunk: Chunk,
+    pub chunk: Chunk,
 }
 
 impl<'a> Compiler<'a> {
-    fn new(src: &'a str) -> Self {
+    pub fn new(src: &'a str) -> Self {
         let scanner = Scanner::new(src);
 
         Compiler {
@@ -36,7 +33,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn compile(&mut self) -> bool {
+    pub fn compile(&mut self) -> bool {
         self.advance();
         // self.expression();
 
@@ -182,7 +179,24 @@ impl<'a> Compiler<'a> {
         self.parse_precedence(Precedence::Assignment);
     }
 
-    fn parse_precedence(&mut self, Precedence: Precedence) {
-        todo!()
+    fn parse_precedence(&mut self, precedence: Precedence) {
+        let prefix_fn = parse_rule(self.current.kind).prefix;
+        self.advance();
+
+        if ptr::eq(prefix_fn, PLACEHOLDER_PARSEFN) {
+            self.error_at_previous("Unexpected expression.")
+        }
+
+        prefix_fn(self);
+
+        loop {
+            let prule = parse_rule(self.current.kind);
+            if prule.precedence <= precedence {
+                break;
+            }
+
+            self.advance();
+            (prule.infix)(self);
+        }
     }
 }

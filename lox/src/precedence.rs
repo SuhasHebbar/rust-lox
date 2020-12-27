@@ -60,7 +60,7 @@ fn placeholder_fn(_compiler: &mut Compiler) {
     eprintln!("Call to undefined table entry.");
 } 
 
-const PLACEHOLDER_PARSEFN: ParseFn = &placeholder_fn;
+pub const PLACEHOLDER_PARSEFN: ParseFn = &placeholder_fn;
 
 pub struct ParseRule {
     pub prefix: ParseFn,

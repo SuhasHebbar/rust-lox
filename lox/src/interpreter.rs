@@ -1,9 +1,9 @@
-use crate::{opcodes::Chunk, scanner::{Scanner, TokenType as T}};
+use crate::{compiler::Compiler, opcodes::Chunk, scanner::{Scanner, TokenType as T}, vm::Vm};
 
 pub enum InterpreterResult {
     Ok,
     CompileError,
-    RuntimeError,
+    RuntjimeError,
 }
 
 pub struct Interpreter {
@@ -23,21 +23,19 @@ impl Interpreter {
         }
 
         return self.run();
-        // self.print_tokens(source);
-
-        InterpreterResult::Ok
     }
 
     fn compile(&mut self, source: &str) -> bool {
-        let scanner = Scanner::new(source);
-//         advance();
-//   expression();
-//   consume(TOKEN_EOF, "Expect end of expression.");
-todo!()
+        let compiler = Compiler::new(source);
+        let compiler_res = compiler.compile();
+        self.chunk = compiler.chunk;
+
+        compiler_res
     }
 
     fn run(&mut self) -> InterpreterResult {
-        todo!()
+        let vm = Vm::new(self.chunk);
+        vm.run()
     }
 
     fn print_tokens(&mut self, source: &str) {
