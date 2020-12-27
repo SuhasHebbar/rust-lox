@@ -3,7 +3,7 @@ use crate::{compiler::Compiler, opcodes::Chunk, scanner::{Scanner, TokenType as 
 pub enum InterpreterResult {
     Ok,
     CompileError,
-    RuntjimeError,
+    RunttimeError,
 }
 
 pub struct Interpreter {

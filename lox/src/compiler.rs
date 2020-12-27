@@ -35,7 +35,7 @@ impl<'a> Compiler<'a> {
 
     pub fn compile(&mut self) -> bool {
         self.advance();
-        // self.expression();
+        self.expression();
 
         // This shouldn't be needed as the scanner iterator should return EOF
         // self.consume(EOF, "End of Expression");
@@ -45,6 +45,15 @@ impl<'a> Compiler<'a> {
 
     fn end_compile(&mut self) {
         self.emit_return();
+
+
+        #[cfg(feature = "lox_debug")]
+        {
+            if self.had_error {
+                eprintln!("Dumping bytecode to console");
+                eprintln!("{}", self.chunk);
+            }
+        }
     }
 
     fn consume(&mut self, token_type: TokenType, message: &str) {
