@@ -68,13 +68,7 @@ impl<'a> Compiler<'a> {
         self.previous = self.current;
 
         loop {
-            // I should handle the None at the end of iteration here?
-            let token = self.scanner.next();
-            if token.is_none() {
-                break;
-            }
-
-            self.current = token.unwrap();
+            self.current = self.scanner.scan_token();
 
             if self.current.kind != TokenType::Error {
                 break;

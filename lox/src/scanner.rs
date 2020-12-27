@@ -165,6 +165,14 @@ impl<'a> Scanner<'a> {
         let token = identifier_type(self.get_curr_string());
         return self.make_token(token);
     }
+
+
+    pub fn scan_token(&mut self) -> Token<'a> {
+        match self.next() {
+            Some(token) => token,
+            None => self.make_token(TokenType::EOF)
+        }
+    }
 }
 
 impl<'a> Iterator for Scanner<'a> {
@@ -178,7 +186,6 @@ impl<'a> Iterator for Scanner<'a> {
         };
 
         if self.is_at_end() {
-            // return Some(self.makeToken(T::EOF));
             return None;
         }
 

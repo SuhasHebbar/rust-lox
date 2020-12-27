@@ -37,7 +37,7 @@ impl Vm {
                 Instruction::Constant(cin) => {
                     let constant = self.chunk.get_value(cin);
                     self.stack.push(constant);
-                    println!("{}", constant);
+                    // println!("{}", constant);
                 },
                 Instruction::Negate => {
                     let Value::Number(head) = self.stack.last_mut().unwrap();

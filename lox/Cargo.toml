@@ -9,4 +9,6 @@ edition = "2018"
 [dependencies]
 rustyline = "6.3.0"
 lox-macros = {path = "../lox-macros"}
-itertools = "0.9.0"
+
+[features]
+lox_debug = []
