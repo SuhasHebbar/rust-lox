@@ -23,6 +23,7 @@ impl Interpreter {
         }
 
         return self.run();
+        // self.print_tokens(source);
 
         InterpreterResult::Ok
     }
@@ -32,7 +33,7 @@ impl Interpreter {
 //         advance();
 //   expression();
 //   consume(TOKEN_EOF, "Expect end of expression.");
-        todo!()
+todo!()
     }
 
     fn run(&mut self) -> InterpreterResult {

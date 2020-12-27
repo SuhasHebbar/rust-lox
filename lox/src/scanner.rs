@@ -1,17 +1,15 @@
-use std::str::CharIndices;
-
-use itertools::MultiPeek;
+use std::{iter::Peekable, str::CharIndices};
 
 pub struct Scanner<'a> {
     source: &'a str,
-    curr: MultiPeek<CharIndices<'a>>,
+    curr: Peekable<CharIndices<'a>>,
     start: usize,
     line: usize,
 }
 
 impl<'a> Scanner<'a> {
     pub fn new(source: &'a str) -> Self {
-        let curr = itertools::multipeek(source.char_indices());
+        let curr = source.char_indices().peekable();
 
         Scanner {
             source,
@@ -32,7 +30,7 @@ impl<'a> Scanner<'a> {
 
     // #[inline]
     fn match_char(&mut self, c: char) -> bool {
-        match self.curr.peek_once() {
+        match self.curr.peek() {
             None => false,
             Some((_sz, char_)) => *char_ == c,
         }
@@ -40,7 +38,7 @@ impl<'a> Scanner<'a> {
 
     // #[inline]
     fn can_match_digit(&mut self) -> bool {
-        match self.curr.peek_once() {
+        match self.curr.peek() {
             None => false,
             Some((_sz, char_)) => char_.is_digit(BASE),
         }
@@ -48,14 +46,14 @@ impl<'a> Scanner<'a> {
 
     // #[inline]
     fn can_match_alphanumeric(&mut self) -> bool {
-        match self.curr.peek_once() {
+        match self.curr.peek() {
             None => false,
             Some((_sz, char_)) => char_.is_alphanumeric(),
         }
     }
 
     fn make_token(&mut self, kind: TokenType) -> Token<'a> {
-        let end_index = match self.curr.peek_once() {
+        let end_index = match self.curr.peek() {
             None => self.source.len(),
             Some((char_pos, _char)) => *char_pos,
         };
@@ -76,12 +74,12 @@ impl<'a> Scanner<'a> {
     }
 
     fn is_at_end(&mut self) -> bool {
-        None == self.curr.peek_once()
+        None == self.curr.peek()
     }
 
     fn skip_whitespace(&mut self) {
         loop {
-            if let Some((_sz, a)) = self.curr.peek_once() {
+            if let Some((_sz, a)) = self.curr.peek() {
                 match a {
                     ' ' | '\r' | '\t' => {
                         self.curr.next();
@@ -93,7 +91,7 @@ impl<'a> Scanner<'a> {
                         // break;
                     }
                     '/' => {
-                        if let Some((_, '/')) = self.curr.peek_once() {
+                        if let Some((_, '/')) = self.curr.peek_twice() {
                             self.curr.next();
                             self.curr.next();
                             while !self.is_at_end() && self.match_char('\n') {
@@ -126,7 +124,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn get_curr_string(&mut self) -> &str {
-        let end = match self.curr.peek_once() {
+        let end = match self.curr.peek() {
             None => self.source.len(),
             Some((char_pos, _char)) => *char_pos,
         };
@@ -137,6 +135,20 @@ impl<'a> Scanner<'a> {
     fn digit(&mut self) -> Token<'a> {
         while !self.is_at_end() && self.can_match_digit() {
             self.curr.next();
+        }
+
+        let has_dot = self.match_char('.');
+
+        let is_fraction = has_dot && match self.curr.peek_twice() {
+            None => false,
+            Some((_sz, char_)) => char_.is_digit(BASE),
+        };
+
+        if is_fraction {
+            self.curr.next();
+            while self.can_match_digit() {
+                self.curr.next();
+            }
         }
 
         return self.make_token(TokenType::Number);
@@ -157,7 +169,7 @@ impl<'a> Iterator for Scanner<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.skip_whitespace();
 
-        self.start = match self.curr.peek_once() {
+        self.start = match self.curr.peek() {
             None => self.source.len(),
             Some((char_pos, _char)) => *char_pos,
         };
@@ -282,31 +294,20 @@ pub enum TokenType {
 
     Error,
     EOF,
+
+    // Placeholder token to represent an uninitialized token
+    Placeholder,
 }
 
 trait DoubleLookAhead {
-    type Item;
-    fn peek_once(&mut self) -> Option<&Self::Item>;
-    fn peek_twice(&mut self) -> Option<&Self::Item>;
+    fn peek_twice(&mut self) -> Option<(usize, char)>;
 }
 
-impl<I> DoubleLookAhead for MultiPeek<I>
-where
-    I: Iterator,
-{
-    type Item = I::Item;
-    fn peek_once(&mut self) -> Option<&Self::Item> {
-        // TODO: Look how to put this at the end of the function instead.
-        self.reset_peek();
-        let val = self.peek();
-        val
-    }
-
-    fn peek_twice(&mut self) -> Option<&Self::Item> {
-        self.reset_peek();
-        self.peek();
-        let val = self.peek();
-        val
+impl<'a> DoubleLookAhead for Peekable<CharIndices<'a>> {
+    fn peek_twice(&mut self) -> Option<(usize, char)> {
+        let mut peek_iter = self.clone();
+        peek_iter.next();
+        peek_iter.next()
     }
 }
 
@@ -366,5 +367,15 @@ fn identifier_type(ident: &str) -> TokenType {
             }
         }
         _ => TokenType::Identifier,
+    }
+}
+
+impl Token<'_> {
+    pub fn placeholder() -> Self {
+        Token {
+            kind: TokenType::Placeholder,
+            line: 0,
+            description: ""
+        }
     }
 }
