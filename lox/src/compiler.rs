@@ -1,5 +1,5 @@
 use std::todo;
-use crate::{opcodes::Number, precedence::Precedence};
+use crate::{opcodes::{ConstantIndex, Number}, precedence::Precedence};
 
 use crate::{
     opcodes::Chunk,
@@ -71,11 +71,11 @@ impl Compiler<'_> {
     }
 
     fn error_at_current(&mut self, message: &str) {
-        self.error_at(self.current, message);
+        self.error_at(&self.current, message);
     }
 
     fn error_at_previous(&mut self, message: &str) {
-        self.error_at(self.previous, message);
+        self.error_at(&self.previous, message);
     }
 
     fn error_at(&mut self, token: &Token, message: &str) {
@@ -97,7 +97,7 @@ impl Compiler<'_> {
     }
 
     fn current_chunk(&mut self) -> &mut Chunk {
-        self.chunk
+        &mut self.chunk
     }
 
     fn emit_instruction(&mut self, instr: Instruction) {
@@ -113,7 +113,7 @@ impl Compiler<'_> {
         self.emit_instruction(Instruction::Return);
     }
 
-    fn make_constant(&mut self, value: Value) {
+    fn make_constant(&mut self, value: Value) -> ConstantIndex {
         let constant_index = self.emit_value(value);
         if constant_index > u8::MAX {
             self.error_at_previous("Too many constants in one chunk.");
@@ -129,8 +129,8 @@ impl Compiler<'_> {
     }
 
     pub fn number(&mut self) {
-        let value: Number = self.previous.description.parse();
-        self.emit_constant(value)
+        let value: Number = self.previous.description.parse().unwrap();
+        self.emit_constant(Value::Number(value))
     }
 
     pub fn grouping(&mut self) {
@@ -147,6 +147,10 @@ impl Compiler<'_> {
             TokenType::Minus => self.emit_instruction(Instruction::Negate),
             _ => (),
         };
+    }
+
+    pub fn binary(&mut self) {
+        // do nothing
     }
 
     pub fn expression(&mut self) {

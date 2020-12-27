@@ -244,7 +244,7 @@ pub struct Token<'a> {
     pub description: &'a str,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,
