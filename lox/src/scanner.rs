@@ -237,14 +237,14 @@ impl<'a> Iterator for Scanner<'a> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct Token<'a> {
     pub line: usize,
     pub kind: TokenType,
     pub description: &'a str,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum TokenType {
     // Single-character tokens.
     LeftParen,

@@ -1,5 +1,8 @@
+use crate::{
+    opcodes::{ConstantIndex, Number},
+    precedence::Precedence,
+};
 use std::todo;
-use crate::{opcodes::{ConstantIndex, Number}, precedence::Precedence};
 
 use crate::{
     opcodes::Chunk,
@@ -19,8 +22,8 @@ pub struct Compiler<'a> {
     chunk: Chunk,
 }
 
-impl Compiler<'_> {
-    fn new(src: &str) -> Self {
+impl<'a> Compiler<'a> {
+    fn new(src: &'a str) -> Self {
         let scanner = Scanner::new(src);
 
         Compiler {
@@ -101,8 +104,8 @@ impl Compiler<'_> {
     }
 
     fn emit_instruction(&mut self, instr: Instruction) {
-        self.current_chunk()
-            .add_instruction(instr, self.previous.line);
+        let line = self.previous.line;
+        self.current_chunk().add_instruction(instr, line);
     }
 
     fn emit_value(&mut self, value: Value) -> u8 {
