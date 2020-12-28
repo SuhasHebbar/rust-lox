@@ -54,13 +54,7 @@ impl Precedence {
     }
 }
 
-pub type ParseFn = &'static dyn Fn(&mut Compiler);
-
-fn placeholder_fn(_compiler: &mut Compiler) {
-    eprintln!("Call to undefined table entry.");
-} 
-
-pub const PLACEHOLDER_PARSEFN: ParseFn = &placeholder_fn;
+pub type ParseFn = Option<&'static dyn Fn(&mut Compiler)>;
 
 pub struct ParseRule {
     pub prefix: ParseFn,
@@ -69,36 +63,36 @@ pub struct ParseRule {
 }
 
 const PLACEHOLDER_PARSERULE: ParseRule =
-    ParseRule {infix: PLACEHOLDER_PARSEFN, prefix: PLACEHOLDER_PARSEFN, precedence: Precedence::None };
+    ParseRule {infix: None, prefix: None, precedence: Precedence::None };
 
 
 const LEFT_PAREN_RULE: ParseRule = ParseRule {
-    prefix: &|this: &mut Compiler| this.grouping(),
-    infix: PLACEHOLDER_PARSEFN,
+    prefix: Some(&|this: &mut Compiler| this.grouping()),
+    infix: None,
     precedence: Precedence::None
 };
 
 const MINUS_RULE: ParseRule = ParseRule {
-    prefix: &|this: &mut Compiler| this.unary(),
-    infix: &|this: &mut Compiler| this.binary(),
+    prefix: Some(&|this: &mut Compiler| this.unary()),
+    infix: Some(&|this: &mut Compiler| this.binary()),
     precedence: Precedence::Term
 };
 
 const PLUS_RULE: ParseRule = ParseRule {
-    prefix: PLACEHOLDER_PARSEFN,
-    infix: &|this: &mut Compiler| this.binary(),
+    prefix: None,
+    infix: Some(&|this: &mut Compiler| this.binary()),
     precedence: Precedence::Term,
 };
 
 const SLASH_AND_STAR_RULE: ParseRule = ParseRule {
-    prefix: PLACEHOLDER_PARSEFN,
-    infix: &|this: &mut Compiler| this.binary(),
+    prefix: None,
+    infix: Some(&|this: &mut Compiler| this.binary()),
     precedence: Precedence::Factor,
 };
 
 const NUMBER_RULE: ParseRule = ParseRule {
-    prefix: &|this: &mut Compiler| this.number(),
-    infix: PLACEHOLDER_PARSEFN,
+    prefix: Some(&|this: &mut Compiler| this.number()),
+    infix: None,
     precedence: Precedence::None,
 };
 

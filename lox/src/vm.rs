@@ -1,23 +1,34 @@
 use crate::{
     interpreter::InterpreterResult,
-    opcodes::{Chunk, Instruction, Number, Value},
+    opcodes::{Chunk, ChunkIterator, Instruction, Number, Value},
 };
-use std::ops::{Add, Div, Mul, Sub};
+use std::{
+    iter::{Enumerate, Peekable},
+    mem,
+    ops::{Add, Sub, Mul, Div}
+};
 
 const STACK_MIN_SIZE: usize = 256;
 
 type Stack = Vec<Value>;
+type Curr = Peekable<Enumerate<ChunkIterator<'static>>>;
 
 pub struct Vm {
     chunk: Chunk,
     stack: Stack,
+    instr_iter: Curr,
 }
 
 impl Vm {
     pub fn new(chunk: Chunk) -> Self {
+        // https://stackoverflow.com/questions/43952104/how-can-i-store-a-chars-iterator-in-the-same-struct-as-the-string-it-is-iteratin
+        // https://stackoverflow.com/questions/32300132/why-cant-i-store-a-value-and-a-reference-to-that-value-in-the-same-struct
+        // This should be safe since we will not move Chunk away while using instr_iter.
+        let instr_iter = unsafe { mem::transmute(chunk.instr_iter().enumerate().peekable()) };
         Vm {
             chunk,
             stack: Vec::with_capacity(STACK_MIN_SIZE),
+            instr_iter,
         }
     }
 
@@ -31,15 +42,11 @@ impl Vm {
     }
 
     pub fn run(&mut self) -> InterpreterResult {
-        let mut instr_iter = self.chunk.instr_iter().enumerate();
-        while let Some((index, instr)) = instr_iter.next() {
+        while let Some((_index, instr)) = self.instr_iter.peek() {
             #[cfg(feature = "lox_debug")]
             {
                 println!("{}", self.chunk.disassemble_instruction(index, &instr));
             }
-
-            let stk_ref = &mut self.stack;
-            let runtime_error_handle = |a, b| self.runtime_error(a, b);
 
             match instr {
                 Instruction::Return => {
@@ -47,7 +54,7 @@ impl Vm {
                     return InterpreterResult::Ok;
                 }
                 Instruction::Constant(cin) => {
-                    let constant = self.chunk.get_value(cin);
+                    let constant = self.chunk.get_value(*cin);
                     self.stack.push(constant);
                     // println!("{}", constant);
                 }
@@ -55,45 +62,44 @@ impl Vm {
                     if let Value::Number(head) = self.stack.last_mut().unwrap() {
                         *head = -*head;
                     } else {
-                        self.runtime_error("Operand must be a number.", index);
+                        self.runtime_error("Operand must be a number.");
                         return InterpreterResult::RuntimeError;
                     }
                 }
                 Instruction::Add => {
-                    perform_binary_op(stk_ref, index, Number::add, runtime_error_handle);
+                    self.perform_binary_op(Number::add);
                 }
                 Instruction::Subtract => {
-                    // perform_binary_op(stk_ref, index, Number::sub, runtime_error_handle);
+                    self.perform_binary_op(Number::sub);
                 }
                 Instruction::Multiply => {
-                    // perform_binary_op(stk_ref, index, Number::mul, runtime_error_handle);
+                    self.perform_binary_op(Number::mul);
                 }
                 Instruction::Divide => {
-                    // perform_binary_op(stk_ref, index, Number::div, runtime_error_handle);
+                    self.perform_binary_op(Number::div);
                 }
             };
+            self.instr_iter.next();
         }
 
         return InterpreterResult::Ok;
     }
 
-    fn runtime_error(&self, message: &str, instr_index: usize) {
+    fn runtime_error(&mut self, message: &str) {
         eprintln!("{}", message);
+        let instr_index = self.instr_iter.peek().unwrap().0;
         let line_no = self.chunk.get_line(instr_index);
         eprintln!("[line {}] in script", line_no);
     }
 
-    fn perform_binary_op(
-        &mut self,
-        op: impl Fn(Number, Number) -> Number,
-    ) {
-        if let (Value::Number(rhs), Value::Number(lhs)) = (self.peek(0), self.peek( 1)) {
+    fn perform_binary_op(&mut self, op: impl Fn(Number, Number) -> Number) {
+        if let (Value::Number(rhs), Value::Number(lhs)) = (self.peek(0), self.peek(1)) {
             let res = Value::Number(op(*lhs, *rhs));
             self.stack.pop();
             self.stack.pop();
             self.stack.push(res);
         } else {
-            // runtime_error_handle("Operands must be numbers", instr_index)
+            self.runtime_error("Operands must be numbers")
         }
     }
 }

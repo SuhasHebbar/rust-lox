@@ -38,6 +38,7 @@ impl Interpreter {
         vm.run()
     }
 
+    #[allow(dead_code)]
     fn print_tokens(&mut self, source: &str) {
         let scanner = Scanner::new(source);
         let mut line = 0;

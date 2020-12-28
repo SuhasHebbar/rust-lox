@@ -4,7 +4,7 @@ use rustyline::{Config, error::ReadlineError};
 use crate::interpreter::{Interpreter, InterpreterResult};
 use std::process;
 
-pub fn runFile(file_path: &str) {
+pub fn run_file(file_path: &str) {
     let mut file = File::open(file_path).expect("Failed to open file");
 
     let mut content = String::new();
@@ -23,7 +23,7 @@ pub fn runFile(file_path: &str) {
     };
 }
 
-const history_save_path: &str = ".lox_history";
+const HISTORY_SAVE_PATH: &str = ".lox_history";
 
 pub fn repl() {
     let rl_config = Config::builder()
@@ -32,7 +32,7 @@ pub fn repl() {
         .build();
     let mut rl = rustyline::Editor::<()>::with_config(rl_config);
 
-    if rl.load_history(history_save_path).is_err() {
+    if rl.load_history(HISTORY_SAVE_PATH).is_err() {
         eprintln!("Failed to find previous history.");
     }
 
@@ -54,6 +54,6 @@ pub fn repl() {
         }
     }
 
-    rl.save_history(history_save_path).unwrap();
+    rl.save_history(HISTORY_SAVE_PATH).unwrap();
 }
 

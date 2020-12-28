@@ -1,5 +1,5 @@
-use crate::{opcodes::{ConstantIndex, Number}, precedence::{PLACEHOLDER_PARSEFN, Precedence, parse_rule}};
-use std::{ptr, todo};
+use crate::{opcodes::{ConstantIndex, Number}, precedence::{Precedence, parse_rule}};
+use std::{ptr};
 
 use crate::{
     opcodes::Chunk,
@@ -189,13 +189,15 @@ impl<'a> Compiler<'a> {
 
     fn parse_precedence(&mut self, precedence: Precedence) {
         let prefix_fn = parse_rule(self.current.kind).prefix;
-        self.advance();
 
-        if ptr::eq(prefix_fn, PLACEHOLDER_PARSEFN) {
-            self.error_at_previous("Unexpected expression.")
+        if let Some(prefix_fn) = prefix_fn {
+            self.advance();
+            prefix_fn(self);
+        } else {
+            self.error_at_previous("Unexpected expression.");
+            return;
         }
 
-        prefix_fn(self);
 
         loop {
             let prule = parse_rule(self.current.kind);
@@ -204,7 +206,7 @@ impl<'a> Compiler<'a> {
             }
 
             self.advance();
-            (prule.infix)(self);
+            (prule.infix.unwrap())(self);
         }
     }
 }

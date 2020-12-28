@@ -1,8 +1,6 @@
-
 use std::env;
 
-use lox::repl::{repl, runFile};
-
+use lox::repl::{repl, run_file};
 
 // fn main2() {
 //     let mut chunk = Chunk::new();
@@ -24,12 +22,22 @@ use lox::repl::{repl, runFile};
 fn main() {
     let args: Vec<_> = env::args().collect();
 
-        // runFile("main.lox");
+    // runFile("main.lox");
 
     if args.len() == 1 {
         repl()
     } else {
-        runFile(&args[1])
+        run_file(&args[1])
     }
 }
 
+#[cfg(test)]
+mod test {
+    use lox::repl::run_file;
+
+
+    #[test]
+    fn main_test() {
+        run_file("main_test.lox");
+    }
+}
