@@ -30,7 +30,9 @@ pub struct Chunk {
 
 #[derive(Clone, Debug, Copy)]
 pub enum Value {
+    Nil,
     Number(Number),
+    Boolean(bool),
 }
 
 pub struct ChunkIterator<'a>(&'a [u8]);
@@ -52,7 +54,9 @@ impl Iterator for ChunkIterator<'_> {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
+            Value::Nil => write!(f, "nil"),
             Value::Number(num) => write!(f, "{}", num),
+            Value::Boolean(val) => write!(f, "{}", val),
         }
     }
 }
@@ -107,6 +111,10 @@ impl Chunk {
         };
 
         return format!("{:0>4} {: >4} {} {}", index, line_str, instr, extension);
+    }
+
+    pub fn get_line(&self, instr_index: usize) -> usize {
+        self.lines[instr_index]
     }
 }
 
