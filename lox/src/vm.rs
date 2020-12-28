@@ -83,24 +83,22 @@ impl Vm {
         eprintln!("[line {}] in script", line_no);
     }
 
-}
     fn perform_binary_op(
-        stack: &mut Vec<Value>,
-        instr_index: usize,
+        &mut self
         op: impl Fn(Number, Number) -> Number,
-        runtime_error_handle: impl Fn(&str, usize)
     ) {
-        if let (Value::Number(rhs), Value::Number(lhs)) = (peek_stk(stack, 0), peek_stk(stack, 1)) {
+        if let (Value::Number(rhs), Value::Number(lhs)) = (self.peek(0), self.peek( 1)) {
             let res = Value::Number(op(*lhs, *rhs));
-            stack.pop();
-            stack.pop();
-            stack.push(res);
+            self.stack.pop();
+            self.stack.pop();
+            self.stack.push(res);
         } else {
-            runtime_error_handle("Operands must be numbers", instr_index)
+            // runtime_error_handle("Operands must be numbers", instr_index)
         }
     }
-
-fn peek_stk(stk: &mut Stack, distance: usize) -> &Value {
-    let stk_sz = stk.len();
-    &stk[stk_sz - 1 - distance]
 }
+
+// fn peek_stk(stk: &mut Stack, distance: usize) -> &Value {
+//     let stk_sz = stk.len();
+//     &stk[stk_sz - 1 - distance]
+// }
