@@ -1,12 +1,5 @@
-use crate::{
-    interpreter::InterpreterResult,
-    opcodes::{Chunk, ChunkIterator, Instruction, Number, Value},
-};
-use std::{
-    iter::{Enumerate, Peekable},
-    mem,
-    ops::{Add, Sub, Mul, Div}
-};
+use crate::{interpreter::InterpreterResult, opcodes::{Chunk, ChunkIterator, Instruction, Number, Value}, precedence::ParseFn};
+use std::{intrinsics::transmute, iter::{Enumerate, Peekable}, mem, ops::{Add, Sub, Mul, Div}};
 
 const STACK_MIN_SIZE: usize = 256;
 
@@ -45,7 +38,7 @@ impl Vm {
         while let Some((_index, instr)) = self.instr_iter.peek() {
             #[cfg(feature = "lox_debug")]
             {
-                println!("{}", self.chunk.disassemble_instruction(index, &instr));
+                println!("{}", self.chunk.disassemble_instruction(*_index, &instr));
             }
 
             match instr {
@@ -66,6 +59,11 @@ impl Vm {
                         return InterpreterResult::RuntimeError;
                     }
                 }
+                Instruction::Not => {
+                    let head = self.stack.pop().unwrap();
+                    let not = is_falsey(head);
+                    self.stack.push(Value::Boolean(not));
+                }
                 Instruction::Add => {
                     self.perform_binary_op(Number::add);
                 }
@@ -78,6 +76,9 @@ impl Vm {
                 Instruction::Divide => {
                     self.perform_binary_op(Number::div);
                 }
+                Instruction::Nil => self.stack.push(Value::Nil),
+                Instruction::True => self.stack.push(Value::Boolean(true)),
+                Instruction::False => self.stack.push(Value::Boolean(false)),
             };
             self.instr_iter.next();
         }
@@ -108,3 +109,10 @@ impl Vm {
 //     let stk_sz = stk.len();
 //     &stk[stk_sz - 1 - distance]
 // }
+
+fn is_falsey(value: Value) -> bool {
+    match value {
+        Value::Nil | Value::Boolean(false) => true,
+        _ => false
+    }
+}

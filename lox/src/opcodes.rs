@@ -16,10 +16,16 @@ pub enum Instruction {
     Constant(ConstantIndex),
 
     Negate,
+    Not,
     Add,
     Subtract,
     Multiply,
     Divide,
+
+    // Dedicated literal loads
+    Nil,
+    True,
+    False,
 }
 
 pub struct Chunk {

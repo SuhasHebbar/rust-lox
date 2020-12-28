@@ -96,6 +96,18 @@ const NUMBER_RULE: ParseRule = ParseRule {
     precedence: Precedence::None,
 };
 
+const LITERAL_RULE: ParseRule = ParseRule {
+    prefix: Some(&|this: &mut Compiler| this.literal()),
+    infix: None,
+    precedence: Precedence::None,
+};
+
+const BANG_RULE: ParseRule = ParseRule {
+    prefix: Some(&|this: &mut Compiler| this.unary()),
+    infix: None,
+    precedence: Precedence::None,
+};
+
 pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
     match token_type {
         TokenType::LeftParen => &LEFT_PAREN_RULE,
@@ -103,6 +115,8 @@ pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
         TokenType::Plus => &PLUS_RULE,
         TokenType::Slash | TokenType::Star => &SLASH_AND_STAR_RULE,
         TokenType::Number => &NUMBER_RULE,
+        TokenType::False | TokenType::Nil | TokenType::True => &LITERAL_RULE,
+        TokenType::Bang => &BANG_RULE,
         _ => &PLACEHOLDER_PARSERULE,
     }
 }

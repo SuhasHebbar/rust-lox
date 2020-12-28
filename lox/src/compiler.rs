@@ -151,6 +151,15 @@ impl<'a> Compiler<'a> {
         self.emit_constant(Value::Number(value))
     }
 
+    pub fn literal(&mut self) {
+        match self.previous.kind {
+            TokenType::False => self.emit_instruction(Instruction::False),
+            TokenType::Nil => self.emit_instruction(Instruction::Nil),
+            TokenType::True => self.emit_instruction(Instruction::True),
+            _ => panic!("Non literal token found in literal() parse"),
+        }
+    }
+
     pub fn grouping(&mut self) {
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
@@ -163,6 +172,7 @@ impl<'a> Compiler<'a> {
 
         match op_type {
             TokenType::Minus => self.emit_instruction(Instruction::Negate),
+            TokenType::Bang => self.emit_instruction(Instruction::Not),
             _ => (),
         };
     }
