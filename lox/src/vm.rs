@@ -63,13 +63,13 @@ impl Vm {
                     perform_binary_op(stk_ref, index, Number::add, runtime_error_handle);
                 }
                 Instruction::Subtract => {
-                    perform_binary_op(stk_ref, index, Number::sub, runtime_error_handle);
+                    // perform_binary_op(stk_ref, index, Number::sub, runtime_error_handle);
                 }
                 Instruction::Multiply => {
-                    perform_binary_op(stk_ref, index, Number::mul, runtime_error_handle);
+                    // perform_binary_op(stk_ref, index, Number::mul, runtime_error_handle);
                 }
                 Instruction::Divide => {
-                    perform_binary_op(stk_ref, index, Number::div, runtime_error_handle);
+                    // perform_binary_op(stk_ref, index, Number::div, runtime_error_handle);
                 }
             };
         }
@@ -84,7 +84,7 @@ impl Vm {
     }
 
     fn perform_binary_op(
-        &mut self
+        &mut self,
         op: impl Fn(Number, Number) -> Number,
     ) {
         if let (Value::Number(rhs), Value::Number(lhs)) = (self.peek(0), self.peek( 1)) {
