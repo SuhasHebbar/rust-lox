@@ -21,6 +21,9 @@ pub enum Instruction {
     Subtract,
     Multiply,
     Divide,
+    Equal,
+    Greater,
+    Less,
 
     // Dedicated literal loads
     Nil,

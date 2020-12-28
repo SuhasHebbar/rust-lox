@@ -1,5 +1,8 @@
-use crate::{opcodes::{ConstantIndex, Number}, precedence::{Precedence, parse_rule}};
-use std::{ptr};
+use crate::{
+    opcodes::{ConstantIndex, Number},
+    precedence::{parse_rule, ParseFn, Precedence},
+};
+use std::ptr;
 
 use crate::{
     opcodes::Chunk,
@@ -45,7 +48,6 @@ impl<'a> Compiler<'a> {
 
     fn end_compile(&mut self) {
         self.emit_return();
-
 
         #[cfg(feature = "lox_debug")]
         {
@@ -188,6 +190,21 @@ impl<'a> Compiler<'a> {
             TokenType::Minus => self.emit_instruction(Instruction::Subtract),
             TokenType::Star => self.emit_instruction(Instruction::Multiply),
             TokenType::Slash => self.emit_instruction(Instruction::Divide),
+            TokenType::EqualEqual => self.emit_instruction(Instruction::Equal),
+            TokenType::BangEqual => {
+                self.emit_instruction(Instruction::Equal);
+                self.emit_instruction(Instruction::Not);
+            }
+            TokenType::Greater => self.emit_instruction(Instruction::Greater),
+            TokenType::GreaterEqual => {
+                self.emit_instruction(Instruction::Less);
+                self.emit_instruction(Instruction::Not);
+            }
+            TokenType::Less => self.emit_instruction(Instruction::Less),
+            TokenType::LessEqual => {
+                self.emit_instruction(Instruction::Greater);
+                self.emit_instruction(Instruction::Not);
+            }
             _ => panic!("Unsupported binary operator {:?}", op_type),
         }
         // do nothing
@@ -207,7 +224,6 @@ impl<'a> Compiler<'a> {
             self.error_at_previous("Unexpected expression.");
             return;
         }
-
 
         loop {
             let prule = parse_rule(self.current.kind);

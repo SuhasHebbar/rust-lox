@@ -10,6 +10,7 @@ pub struct Vm {
     chunk: Chunk,
     stack: Stack,
     instr_iter: Curr,
+    had_runtime_error: bool,
 }
 
 impl Vm {
@@ -22,6 +23,7 @@ impl Vm {
             chunk,
             stack: Vec::with_capacity(STACK_MIN_SIZE),
             instr_iter,
+            had_runtime_error: false
         }
     }
 
@@ -49,7 +51,6 @@ impl Vm {
                 Instruction::Constant(cin) => {
                     let constant = self.chunk.get_value(*cin);
                     self.stack.push(constant);
-                    // println!("{}", constant);
                 }
                 Instruction::Negate => {
                     if let Value::Number(head) = self.stack.last_mut().unwrap() {
@@ -60,9 +61,24 @@ impl Vm {
                     }
                 }
                 Instruction::Not => {
-                    let head = self.stack.pop().unwrap();
+                    let head = self.stack.last().unwrap();
                     let not = is_falsey(head);
+                    self.stack.pop();
                     self.stack.push(Value::Boolean(not));
+                }
+                Instruction::Equal => {
+                    let rhs  = self.peek(0);
+                    let lhs = self.peek(1);
+                    let res = check_equals(lhs, rhs);
+                    self.stack.pop();
+                    self.stack.pop();
+                    self.stack.push(Value::Boolean(res));
+                }
+                Instruction::Greater => {
+                    self.perform_bool_binary_op(|a, b| a > b);
+                }
+                Instruction::Less => {
+                    self.perform_bool_binary_op(|a, b| a < b);
                 }
                 Instruction::Add => {
                     self.perform_binary_op(Number::add);
@@ -81,6 +97,10 @@ impl Vm {
                 Instruction::False => self.stack.push(Value::Boolean(false)),
             };
             self.instr_iter.next();
+
+            if self.had_runtime_error {
+                return InterpreterResult::RuntimeError
+            }
         }
 
         return InterpreterResult::Ok;
@@ -91,11 +111,23 @@ impl Vm {
         let instr_index = self.instr_iter.peek().unwrap().0;
         let line_no = self.chunk.get_line(instr_index);
         eprintln!("[line {}] in script", line_no);
+        self.had_runtime_error = true;
     }
 
     fn perform_binary_op(&mut self, op: impl Fn(Number, Number) -> Number) {
         if let (Value::Number(rhs), Value::Number(lhs)) = (self.peek(0), self.peek(1)) {
             let res = Value::Number(op(*lhs, *rhs));
+            self.stack.pop();
+            self.stack.pop();
+            self.stack.push(res);
+        } else {
+            self.runtime_error("Operands must be numbers")
+        }
+    }
+
+    fn perform_bool_binary_op(&mut self, op: impl Fn(Number, Number) -> bool) {
+        if let (Value::Number(rhs), Value::Number(lhs)) = (self.peek(0), self.peek(1)) {
+            let res = Value::Boolean(op(*lhs, *rhs));
             self.stack.pop();
             self.stack.pop();
             self.stack.push(res);
@@ -110,9 +142,22 @@ impl Vm {
 //     &stk[stk_sz - 1 - distance]
 // }
 
-fn is_falsey(value: Value) -> bool {
+fn is_falsey(value: &Value) -> bool {
     match value {
         Value::Nil | Value::Boolean(false) => true,
         _ => false
+    }
+}
+
+fn check_equals(lhs: &Value, rhs: &Value) -> bool {
+    if mem::discriminant(lhs) != mem::discriminant(rhs) {
+        return false;
+    }
+
+    match (lhs, rhs) {
+        (Value::Nil, Value::Nil) => true,
+        (Value::Boolean(lhs), Value::Boolean(rhs)) => *lhs == *rhs,
+        (Value::Number(lhs), Value::Number(rhs)) => *lhs == *rhs,
+        _ => panic!("unreachable")
     }
 }

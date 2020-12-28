@@ -34,7 +34,6 @@ pub enum Precedence {
     Primary,
 }
 
-
 impl Precedence {
     pub fn next_greater(&self) -> Self {
         use Precedence::*;
@@ -62,20 +61,22 @@ pub struct ParseRule {
     pub precedence: Precedence,
 }
 
-const PLACEHOLDER_PARSERULE: ParseRule =
-    ParseRule {infix: None, prefix: None, precedence: Precedence::None };
-
+const PLACEHOLDER_PARSERULE: ParseRule = ParseRule {
+    infix: None,
+    prefix: None,
+    precedence: Precedence::None,
+};
 
 const LEFT_PAREN_RULE: ParseRule = ParseRule {
     prefix: Some(&|this: &mut Compiler| this.grouping()),
     infix: None,
-    precedence: Precedence::None
+    precedence: Precedence::None,
 };
 
 const MINUS_RULE: ParseRule = ParseRule {
     prefix: Some(&|this: &mut Compiler| this.unary()),
     infix: Some(&|this: &mut Compiler| this.binary()),
-    precedence: Precedence::Term
+    precedence: Precedence::Term,
 };
 
 const PLUS_RULE: ParseRule = ParseRule {
@@ -108,6 +109,18 @@ const BANG_RULE: ParseRule = ParseRule {
     precedence: Precedence::None,
 };
 
+const EQUALITY_RULE: ParseRule = ParseRule {
+    prefix: None,
+    infix: Some(&|this: &mut Compiler| this.binary()),
+    precedence: Precedence::Equality,
+};
+
+const COMPARISON_RULE: ParseRule = ParseRule {
+    prefix: None,
+    infix: Some(&|this: &mut Compiler| this.binary()),
+    precedence: Precedence::Comparison,
+};
+
 pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
     match token_type {
         TokenType::LeftParen => &LEFT_PAREN_RULE,
@@ -117,6 +130,10 @@ pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
         TokenType::Number => &NUMBER_RULE,
         TokenType::False | TokenType::Nil | TokenType::True => &LITERAL_RULE,
         TokenType::Bang => &BANG_RULE,
+        TokenType::BangEqual | TokenType::EqualEqual => &EQUALITY_RULE,
+        TokenType::Greater | TokenType::GreaterEqual | TokenType::Less | TokenType::LessEqual => {
+            &COMPARISON_RULE
+        }
         _ => &PLACEHOLDER_PARSERULE,
     }
 }
