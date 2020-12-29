@@ -100,7 +100,7 @@ where
     T: Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        self.fmt(f)
+        self.as_ref().fmt(f)
     }
 }
 
