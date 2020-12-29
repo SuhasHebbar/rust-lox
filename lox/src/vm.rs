@@ -168,15 +168,12 @@ impl Vm {
         let res: Value;
         if let (Ok(lhs), Ok(rhs)) = (lhs, rhs) {
             res = op(lhs, rhs).into();
+            self.stack.pop();
+            self.stack.pop();
+            self.stack.push(res);
         } else {
             self.runtime_error(error_msg);
-            return;
         }
-        
-
-        self.stack.pop();
-        self.stack.pop();
-        self.stack.push(res);
     }
 }
 
