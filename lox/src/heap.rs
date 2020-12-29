@@ -30,17 +30,22 @@ impl Heap {
     }
 
     pub fn intern_string(&self, string: LoxStr) -> Gc<LoxStr> {
-        let has_key = self.interned_strs.borrow().contains_key(&string);
-        let mut key;
-        if !has_key {
-            let value = Box::new(HeapObj::new(string));
+        let mut interned_strs = self.interned_strs.borrow_mut();
+        let heapobj = interned_strs.get_mut(&string);
+
+        let obj_ptr;
+
+        if let Some(heapobj) = heapobj {
+            obj_ptr = heapobj.as_mut() as *mut HeapObj<LoxStr>;
+        } else {
+            drop(heapobj);
+            drop(interned_strs);
+            let mut value = Box::new(HeapObj::new(string));
+            obj_ptr = value.as_mut() as *mut HeapObj<LoxStr>;
             let new_key = unsafe { mem::transmute(&value.data) };
             self.interned_strs.borrow_mut().insert(new_key, value);
-            key = new_key;
-        } else {
-            key = &string;
         }
-        Gc::from(self.interned_strs.borrow_mut().get_mut(key).unwrap().as_mut() as *mut HeapObj<LoxStr>)
+        Gc::from(obj_ptr)
     }
 }
 
