@@ -140,7 +140,6 @@ impl Vm {
                 let string = LoxStr::from(acc);
                 let string_ref = self.heap.intern_string(string);
                 res = string_ref.into();
-                dbg!("String plussing success!");
             }
             (Value::Number(lhs), Value::Number(rhs)) => {
                 res = (*lhs + *rhs).into();

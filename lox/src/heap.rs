@@ -12,8 +12,15 @@ use std::{
 use std::{hash::Hash, mem};
 
 pub struct Heap {
-    interned_strs: RefCell<HashMap<&'static LoxStr, HeapObj<LoxStr>>>,
+    interned_strs: RefCell<HashMap<&'static LoxStr, Box<HeapObj<LoxStr>>>>,
 }
+
+// impl Drop for Heap {
+//     fn drop(&mut self) {
+//         let heap = self.interned_strs.borrow_mut();
+//         dbg!("{}\n", &*heap);
+//     }
+// }
 
 impl Heap {
     pub fn new() -> Self {
@@ -26,17 +33,18 @@ impl Heap {
         let has_key = self.interned_strs.borrow().contains_key(&string);
         let mut key;
         if !has_key {
-            let value = HeapObj::new(string);
+            let value = Box::new(HeapObj::new(string));
             let new_key = unsafe { mem::transmute(&value.data) };
             self.interned_strs.borrow_mut().insert(new_key, value);
             key = new_key;
         } else {
             key = &string;
         }
-        Gc::from(self.interned_strs.borrow_mut().get_mut(key).unwrap() as *mut HeapObj<LoxStr>)
+        Gc::from(self.interned_strs.borrow_mut().get_mut(key).unwrap().as_mut() as *mut HeapObj<LoxStr>)
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct HeapObj<T: ?Sized> {
     data: T,
 }
