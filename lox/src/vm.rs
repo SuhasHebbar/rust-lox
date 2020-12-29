@@ -1,8 +1,4 @@
-use crate::{
-    interpreter::InterpreterResult,
-    opcodes::{Chunk, ChunkIterator, Instruction, Number, Value},
-    precedence::ParseFn,
-};
+use crate::{heap::LoxStr, interpreter::InterpreterResult, opcodes::{Chunk, ChunkIterator, Instruction, Number, Value}, precedence::ParseFn};
 use std::{
     convert::{TryFrom, TryInto},
     intrinsics::transmute,
@@ -133,7 +129,9 @@ impl Vm {
 
         match (lhs, rhs) {
             (Value::String(lhs), Value::String(rhs)) => {
-                res = ((**lhs).clone() + rhs).into();
+                let mut acc: String = String::from(lhs.as_ref());
+                acc = acc + rhs.as_ref();
+                res = LoxStr::from(acc).into();
             }
             (Value::Number(lhs), Value::Number(rhs)) => {
                 res = (*lhs + *rhs).into();
@@ -162,6 +160,8 @@ impl Vm {
         Value: From<V>,
         T: TryFrom<Value>,
     {
+        // FIXME: Using &Value here gave a mutable borrow while immutable borrow error down the line.
+        // Find a way to use &Value instead of Value.
         let rhs = self.peek(0).clone().try_into();
         let lhs = self.peek(1).clone().try_into();
 

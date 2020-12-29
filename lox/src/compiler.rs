@@ -1,7 +1,4 @@
-use crate::{
-    opcodes::{ConstantIndex, Number},
-    precedence::{parse_rule, ParseFn, Precedence},
-};
+use crate::{heap::LoxStr, opcodes::{ConstantIndex, Number}, precedence::{parse_rule, ParseFn, Precedence}};
 use std::ptr;
 
 use crate::{
@@ -212,7 +209,7 @@ impl<'a> Compiler<'a> {
 
     pub fn string(&mut self) {
         let lexeme_len  = self.previous.description.len();
-        let string = self.previous.description[1..lexeme_len - 1].to_string();
+        let string: LoxStr = self.previous.description[1..lexeme_len - 1].into();
         self.emit_constant(Value::String(string.into()));
     }
 

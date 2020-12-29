@@ -10,7 +10,7 @@ trait ByteCodeEncodeDecode: Sized {
 }
 use lox_macros::ByteCodeEncodeDecode;
 
-use crate::gc::Gc;
+use crate::heap::{Gc, LoxStr};
 
 #[derive(Debug, ByteCodeEncodeDecode)]
 pub enum Instruction {
@@ -44,7 +44,7 @@ pub enum Value {
     Nil,
     Number(Number),
     Boolean(bool),
-    String(Gc<String>)
+    String(Gc<LoxStr>)
 }
 
 impl From<Number> for Value {
@@ -59,14 +59,14 @@ impl From<bool> for Value {
     }
 }
 
-impl From<Gc<String>> for Value {
-    fn from(val: Gc<String>) -> Self {
+impl From<Gc<LoxStr>> for Value {
+    fn from(val: Gc<LoxStr>) -> Self {
         Value::String(val)
     }
 }
 
-impl From<String> for Value {
-    fn from(val: String) -> Self {
+impl From<LoxStr> for Value {
+    fn from(val: LoxStr) -> Self {
         Value::String(val.into())
     }
 }
@@ -214,7 +214,7 @@ impl TryFrom<Value> for bool {
     }
 }
 
-impl TryFrom<Value> for Gc<String> {
+impl TryFrom<Value> for Gc<LoxStr> {
     type Error = PlaceholderError;
     fn try_from(value: Value) -> Result<Self, Self::Error> {
         if let Value::String(val) = value {
