@@ -210,6 +210,12 @@ impl<'a> Compiler<'a> {
         // do nothing
     }
 
+    pub fn string(&mut self) {
+        let lexeme_len  = self.previous.description.len();
+        let string = self.previous.description[1..lexeme_len - 1].to_string();
+        self.emit_constant(Value::String(string.into()));
+    }
+
     pub fn expression(&mut self) {
         self.parse_precedence(Precedence::Assignment);
     }

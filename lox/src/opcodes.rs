@@ -1,5 +1,5 @@
-use fmt::Formatter;
-use std::{convert::TryInto, fmt};
+use fmt::{Display, Formatter};
+use std::{convert::{TryFrom, TryInto}, error::Error, fmt, rc::Rc};
 
 pub type Number = f64;
 pub type ConstantIndex = u8;
@@ -9,6 +9,8 @@ trait ByteCodeEncodeDecode: Sized {
     fn decode(src: &[u8]) -> (Self, &[u8]);
 }
 use lox_macros::ByteCodeEncodeDecode;
+
+use crate::gc::Gc;
 
 #[derive(Debug, ByteCodeEncodeDecode)]
 pub enum Instruction {
@@ -37,12 +39,38 @@ pub struct Chunk {
     values: Vec<Value>,
 }
 
-#[derive(Clone, Debug, Copy)]
+#[derive(Clone, Debug)]
 pub enum Value {
     Nil,
     Number(Number),
     Boolean(bool),
+    String(Gc<String>)
 }
+
+impl From<Number> for Value {
+    fn from(val: Number) -> Self {
+        Value::Number(val)
+    }
+}
+
+impl From<bool> for Value {
+    fn from(val: bool) -> Self {
+        Value::Boolean(val)
+    }
+}
+
+impl From<Gc<String>> for Value {
+    fn from(val: Gc<String>) -> Self {
+        Value::String(val)
+    }
+}
+
+impl From<String> for Value {
+    fn from(val: String) -> Self {
+        Value::String(val.into())
+    }
+}
+
 
 pub struct ChunkIterator<'a>(&'a [u8]);
 
@@ -66,6 +94,7 @@ impl fmt::Display for Value {
             Value::Nil => write!(f, "nil"),
             Value::Number(num) => write!(f, "{}", num),
             Value::Boolean(val) => write!(f, "{}", val),
+            Value::String(string) => write!(f, "'{}'", string),
         }
     }
 }
@@ -97,8 +126,8 @@ impl Chunk {
         (self.values.len() - 1) as u8
     }
 
-    pub fn get_value(&self, index: u8) -> Value {
-        self.values[index as usize]
+    pub fn get_value(&self, index: u8) -> &Value {
+        &self.values[index as usize]
     }
 
     pub fn instr_iter(&self) -> ChunkIterator {
@@ -160,5 +189,51 @@ impl Decode for u8 {
         *slice_ptr = tmp;
         let val: [u8; 1] = val.try_into().expect("slice of incorrect length.");
         return u8::from_ne_bytes(val);
+    }
+}
+
+impl TryFrom<Value> for Number {
+    type Error = PlaceholderError;
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        if let Value::Number(num) = value {
+            Ok(num)
+        } else {
+            Err(PlaceholderError{})
+        }
+    }
+}
+
+impl TryFrom<Value> for bool {
+    type Error = PlaceholderError;
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        if let Value::Boolean(val) = value {
+            Ok(val)
+        } else {
+            Err(PlaceholderError{})
+        }
+    }
+}
+
+impl TryFrom<Value> for Gc<String> {
+    type Error = PlaceholderError;
+    fn try_from(value: Value) -> Result<Self, Self::Error> {
+        if let Value::String(val) = value {
+            Ok(val.clone())
+        } else {
+            Err(PlaceholderError{})
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct PlaceholderError;
+impl Display for PlaceholderError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Placeholder error.")
+    }
+}
+impl Error for PlaceholderError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        None
     }
 }

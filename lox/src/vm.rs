@@ -1,5 +1,15 @@
-use crate::{interpreter::InterpreterResult, opcodes::{Chunk, ChunkIterator, Instruction, Number, Value}, precedence::ParseFn};
-use std::{intrinsics::transmute, iter::{Enumerate, Peekable}, mem, ops::{Add, Sub, Mul, Div}};
+use crate::{
+    interpreter::InterpreterResult,
+    opcodes::{Chunk, ChunkIterator, Instruction, Number, Value},
+    precedence::ParseFn,
+};
+use std::{
+    convert::{TryFrom, TryInto},
+    intrinsics::transmute,
+    iter::{Enumerate, Peekable},
+    mem,
+    ops::{Add, Div, Mul, Sub},
+};
 
 const STACK_MIN_SIZE: usize = 256;
 
@@ -23,7 +33,7 @@ impl Vm {
             chunk,
             stack: Vec::with_capacity(STACK_MIN_SIZE),
             instr_iter,
-            had_runtime_error: false
+            had_runtime_error: false,
         }
     }
 
@@ -50,7 +60,7 @@ impl Vm {
                 }
                 Instruction::Constant(cin) => {
                     let constant = self.chunk.get_value(*cin);
-                    self.stack.push(constant);
+                    self.stack.push(constant.clone());
                 }
                 Instruction::Negate => {
                     if let Value::Number(head) = self.stack.last_mut().unwrap() {
@@ -67,7 +77,7 @@ impl Vm {
                     self.stack.push(Value::Boolean(not));
                 }
                 Instruction::Equal => {
-                    let rhs  = self.peek(0);
+                    let rhs = self.peek(0);
                     let lhs = self.peek(1);
                     let res = check_equals(lhs, rhs);
                     self.stack.pop();
@@ -75,13 +85,13 @@ impl Vm {
                     self.stack.push(Value::Boolean(res));
                 }
                 Instruction::Greater => {
-                    self.perform_bool_binary_op(|a, b| a > b);
+                    self.perform_binary_op(|a: Number, b: Number| a > b);
                 }
                 Instruction::Less => {
-                    self.perform_bool_binary_op(|a, b| a < b);
+                    self.perform_binary_op(|a: Number, b: Number| a < b);
                 }
                 Instruction::Add => {
-                    self.perform_binary_op(Number::add);
+                    self.perform_binary_op_plus();
                 }
                 Instruction::Subtract => {
                     self.perform_binary_op(Number::sub);
@@ -99,7 +109,7 @@ impl Vm {
             self.instr_iter.next();
 
             if self.had_runtime_error {
-                return InterpreterResult::RuntimeError
+                return InterpreterResult::RuntimeError;
             }
         }
 
@@ -114,38 +124,63 @@ impl Vm {
         self.had_runtime_error = true;
     }
 
-    fn perform_binary_op(&mut self, op: impl Fn(Number, Number) -> Number) {
-        if let (Value::Number(rhs), Value::Number(lhs)) = (self.peek(0), self.peek(1)) {
-            let res = Value::Number(op(*lhs, *rhs));
-            self.stack.pop();
-            self.stack.pop();
-            self.stack.push(res);
-        } else {
-            self.runtime_error("Operands must be numbers")
+    fn perform_binary_op_plus(& mut self)
+    {
+        let lhs = self.peek(1);
+        let rhs = self.peek(0);
+
+        let res: Value;
+
+        match (lhs, rhs) {
+            (Value::String(lhs), Value::String(rhs)) => {
+                res = ((**lhs).clone() + rhs).into();
+            }
+            (Value::Number(lhs), Value::Number(rhs)) => {
+                res = (*lhs + *rhs).into();
+            }
+            _ => {
+                self.runtime_error("Operands must both be either numbers or strings");
+                return;
+            }
         }
+
+        self.stack.pop();
+        self.stack.pop();
+        self.stack.push(res);
     }
 
-    fn perform_bool_binary_op(&mut self, op: impl Fn(Number, Number) -> bool) {
-        if let (Value::Number(rhs), Value::Number(lhs)) = (self.peek(0), self.peek(1)) {
-            let res = Value::Boolean(op(*lhs, *rhs));
-            self.stack.pop();
-            self.stack.pop();
-            self.stack.push(res);
-        } else {
-            self.runtime_error("Operands must be numbers")
+    fn perform_binary_op<T, V>(&mut self, op: impl Fn(T, T) -> V)
+    where
+        Value: From<V>,
+        T: TryFrom<Value>,
+    {
+        self.perform_binary_op_gen(op, "Operands must both be either numbers.");
+    }
+
+    fn perform_binary_op_gen<T, V>(&mut self, op: impl Fn(T, T) -> V, error_msg: &str)
+    where
+        Value: From<V>,
+        T: TryFrom<Value>,
+    {
+        let rhs = self.peek(0).clone().try_into();
+        let lhs = self.peek(1).clone().try_into();
+
+        if lhs.is_err() || rhs.is_err() {
+            self.runtime_error(error_msg);
+            return;
         }
+
+        let res = op(lhs.ok().unwrap(), rhs.ok().unwrap()).into();
+        self.stack.pop();
+        self.stack.pop();
+        self.stack.push(res);
     }
 }
-
-// fn peek_stk(stk: &mut Stack, distance: usize) -> &Value {
-//     let stk_sz = stk.len();
-//     &stk[stk_sz - 1 - distance]
-// }
 
 fn is_falsey(value: &Value) -> bool {
     match value {
         Value::Nil | Value::Boolean(false) => true,
-        _ => false
+        _ => false,
     }
 }
 
@@ -158,6 +193,7 @@ fn check_equals(lhs: &Value, rhs: &Value) -> bool {
         (Value::Nil, Value::Nil) => true,
         (Value::Boolean(lhs), Value::Boolean(rhs)) => *lhs == *rhs,
         (Value::Number(lhs), Value::Number(rhs)) => *lhs == *rhs,
-        _ => panic!("unreachable")
+        (Value::String(lhs), Value::String(rhs)) => **lhs == **rhs,
+        _ => panic!("unreachable"),
     }
 }
