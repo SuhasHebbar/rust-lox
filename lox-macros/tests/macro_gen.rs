@@ -16,12 +16,6 @@ enum ByteCode {
     C(ConstantIndex),
 }
 
-#[test]
-fn get_ast() {
-    let a = ByteCode::A;
-    println!("damnn");
-}
-
 trait Decode {
     fn decode(slice_ptr: &mut &[u8]) -> Self;
 }
