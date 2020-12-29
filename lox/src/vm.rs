@@ -165,12 +165,15 @@ impl Vm {
         let rhs = self.peek(0).clone().try_into();
         let lhs = self.peek(1).clone().try_into();
 
-        if lhs.is_err() || rhs.is_err() {
+        let res: Value;
+        if let (Ok(lhs), Ok(rhs)) = (lhs, rhs) {
+            res = op(lhs, rhs).into();
+        } else {
             self.runtime_error(error_msg);
             return;
         }
+        
 
-        let res = op(lhs.ok().unwrap(), rhs.ok().unwrap()).into();
         self.stack.pop();
         self.stack.pop();
         self.stack.push(res);

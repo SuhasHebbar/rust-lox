@@ -229,7 +229,7 @@ impl TryFrom<Value> for Gc<String> {
 pub struct PlaceholderError;
 impl Display for PlaceholderError {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Placeholder error.")
+        write!(f, "{:?}", *self)
     }
 }
 impl Error for PlaceholderError {
