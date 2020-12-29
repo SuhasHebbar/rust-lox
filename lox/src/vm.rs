@@ -1,4 +1,4 @@
-use crate::{heap::LoxStr, interpreter::InterpreterResult, opcodes::{Chunk, ChunkIterator, Instruction, Number, Value}, precedence::ParseFn};
+use crate::{heap::{Heap, LoxStr}, interpreter::{InterpreterResult, VmInit}, opcodes::{Chunk, ChunkIterator, Instruction, Number, Value}, precedence::ParseFn};
 use std::{
     convert::{TryFrom, TryInto},
     intrinsics::transmute,
@@ -13,6 +13,7 @@ type Stack = Vec<Value>;
 type Curr = Peekable<Enumerate<ChunkIterator<'static>>>;
 
 pub struct Vm {
+    heap: Heap,
     chunk: Chunk,
     stack: Stack,
     instr_iter: Curr,
@@ -20,12 +21,14 @@ pub struct Vm {
 }
 
 impl Vm {
-    pub fn new(chunk: Chunk) -> Self {
+    pub fn new(vm_init: VmInit) -> Self {
         // https://stackoverflow.com/questions/43952104/how-can-i-store-a-chars-iterator-in-the-same-struct-as-the-string-it-is-iteratin
         // https://stackoverflow.com/questions/32300132/why-cant-i-store-a-value-and-a-reference-to-that-value-in-the-same-struct
         // This should be safe since we will not move Chunk away while using instr_iter.
+        let VmInit {chunk, heap} = vm_init;
         let instr_iter = unsafe { mem::transmute(chunk.instr_iter().enumerate().peekable()) };
         Vm {
+            heap,
             chunk,
             stack: Vec::with_capacity(STACK_MIN_SIZE),
             instr_iter,
@@ -129,9 +132,14 @@ impl Vm {
 
         match (lhs, rhs) {
             (Value::String(lhs), Value::String(rhs)) => {
+                let lhs = lhs.as_ref();
+                let rhs = rhs.as_ref();
                 let mut acc: String = String::from(lhs.as_ref());
+                
                 acc = acc + rhs.as_ref();
-                res = LoxStr::from(acc).into();
+                let string = LoxStr::from(acc);
+                let string_ref = self.heap.intern_string(string);
+                res = string_ref.into();
             }
             (Value::Number(lhs), Value::Number(rhs)) => {
                 res = (*lhs + *rhs).into();

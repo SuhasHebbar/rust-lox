@@ -65,13 +65,6 @@ impl From<Gc<LoxStr>> for Value {
     }
 }
 
-impl From<LoxStr> for Value {
-    fn from(val: LoxStr) -> Self {
-        Value::String(val.into())
-    }
-}
-
-
 pub struct ChunkIterator<'a>(&'a [u8]);
 
 impl Iterator for ChunkIterator<'_> {

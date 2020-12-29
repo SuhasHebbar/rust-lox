@@ -1,4 +1,10 @@
-use crate::{compiler::Compiler, opcodes::Chunk, scanner::{Scanner, TokenType as T}, vm::Vm};
+use crate::{
+    compiler::Compiler,
+    heap::Heap,
+    opcodes::Chunk,
+    scanner::{Scanner, TokenType as T},
+    vm::Vm,
+};
 
 pub enum InterpreterResult {
     Ok,
@@ -6,35 +12,37 @@ pub enum InterpreterResult {
     RuntimeError,
 }
 
-pub struct Interpreter {
-    chunk: Option<Chunk>
-}
+pub struct Interpreter {}
 
 impl Interpreter {
     pub fn new() -> Self {
-        Interpreter {
-            chunk: None
-        }
+        Interpreter {}
     }
 
     pub fn interpret(&mut self, source: &str) -> InterpreterResult {
-        if !self.compile(source) {
+        let compile_res = self.compile(source);
+        if let Some(vm_init) = compile_res {
+            return self.run(vm_init);
+        } else {
             return InterpreterResult::CompileError;
         }
-
-        return self.run();
     }
 
-    fn compile(&mut self, source: &str) -> bool {
+    fn compile(&mut self, source: &str) -> Option<VmInit> {
         let mut compiler = Compiler::new(source);
         let compiler_res = compiler.compile();
-        self.chunk = Some(compiler.chunk);
+        let chunk = compiler.chunk;
+        let heap = compiler.heap;
 
-        compiler_res
+        if compiler.had_error {
+            None
+        } else {
+            Some(VmInit { chunk, heap })
+        }
     }
 
-    fn run(&mut self) -> InterpreterResult {
-        let mut vm = Vm::new(self.chunk.take().unwrap());
+    fn run(&mut self, vm_init: VmInit) -> InterpreterResult {
+        let mut vm = Vm::new(vm_init);
         vm.run()
     }
 
@@ -57,6 +65,10 @@ impl Interpreter {
                 break;
             }
         }
-
     }
+}
+
+pub struct VmInit {
+    pub chunk: Chunk,
+    pub heap: Heap,
 }

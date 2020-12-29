@@ -1,4 +1,4 @@
-use crate::{heap::LoxStr, opcodes::{ConstantIndex, Number}, precedence::{parse_rule, ParseFn, Precedence}};
+use crate::{heap::{Heap, LoxStr}, opcodes::{ConstantIndex, Number}, precedence::{parse_rule, ParseFn, Precedence}};
 use std::ptr;
 
 use crate::{
@@ -14,9 +14,10 @@ pub struct Compiler<'a> {
     scanner: Scanner<'a>,
     previous: Token<'a>,
     current: Token<'a>,
-    had_error: bool,
+    pub had_error: bool,
     panic_mode: bool,
     pub chunk: Chunk,
+    pub heap: Heap
 }
 
 impl<'a> Compiler<'a> {
@@ -25,11 +26,12 @@ impl<'a> Compiler<'a> {
 
         Compiler {
             scanner,
-            had_error: false,
-            panic_mode: false,
             previous: Token::placeholder(),
             current: Token::placeholder(),
+            had_error: false,
+            panic_mode: false,
             chunk: Chunk::new(),
+            heap: Heap::new()
         }
     }
 
@@ -210,7 +212,8 @@ impl<'a> Compiler<'a> {
     pub fn string(&mut self) {
         let lexeme_len  = self.previous.description.len();
         let string: LoxStr = self.previous.description[1..lexeme_len - 1].into();
-        self.emit_constant(Value::String(string.into()));
+        let string_ref = self.heap.intern_string(string);
+        self.emit_constant(Value::String(string_ref));
     }
 
     pub fn expression(&mut self) {
