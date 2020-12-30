@@ -132,11 +132,9 @@ impl Vm {
 
         match (lhs, rhs) {
             (Value::String(lhs), Value::String(rhs)) => {
-                let lhs = lhs.as_ref();
-                let rhs = rhs.as_ref();
-                let mut acc: String = String::from(lhs.as_ref());
+                let mut acc = lhs.to_string();
                 
-                acc = acc + rhs.as_ref();
+                acc = acc + rhs.as_str();
                 let string = LoxStr::from(acc);
                 let string_ref = self.heap.intern_string(string);
                 res = string_ref.into();

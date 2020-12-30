@@ -124,6 +124,16 @@ pub struct LoxStr {
     val: Box<str>,
 }
 
+impl LoxStr {
+    pub fn as_str(&self) -> &str {
+        &self.val
+    }
+
+    pub fn to_string(&self) -> String {
+        self.val.to_string()
+    }
+}
+
 // impl From<String> for LoxStr {
 //     fn from(val: String) -> Self {
 //         let val: Box<str> = val.into();
@@ -150,18 +160,18 @@ where
 impl Deref for LoxStr {
     type Target = str;
     fn deref(&self) -> &Self::Target {
-        self.val.as_ref()
+        self.as_str()
     }
 }
 
 impl Borrow<str> for LoxStr {
     fn borrow(&self) -> &str {
-        self.val.as_ref()
+        self.as_str()
     }
 }
 
 impl AsRef<str> for LoxStr {
     fn as_ref(&self) -> &str {
-        self.val.as_ref()
+        self.as_str()
     }
 }
