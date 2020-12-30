@@ -43,6 +43,8 @@ pub enum Instruction {
     Pop,
 
     DefineGlobal(ConstantIndex),
+    GetGlobal(ConstantIndex),
+    SetGlobal(ConstantIndex),
 }
 
 pub struct Chunk {
@@ -147,9 +149,10 @@ impl Chunk {
         };
 
         let extension = match instr {
-            Instruction::Constant(var_index) | Instruction::DefineGlobal(var_index) => {
-                self.get_value(*var_index).to_string()
-            }
+            Instruction::Constant(var_index)
+            | Instruction::DefineGlobal(var_index)
+            | Instruction::SetGlobal(var_index)
+            | Instruction::GetGlobal(var_index) => self.get_value(*var_index).to_string(),
             _ => "".to_owned(),
         };
 

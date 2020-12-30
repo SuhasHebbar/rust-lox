@@ -127,6 +127,13 @@ const STRING_RULE: ParseRule = ParseRule {
     precedence: Precedence::None,
 };
 
+const VARIABLE_RULE: ParseRule = ParseRule {
+    prefix: Some(&|this: &mut Compiler| this.variable()),
+    infix: None,
+    precedence: Precedence::None,
+};
+
+
 pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
     match token_type {
         TokenType::LeftParen => &LEFT_PAREN_RULE,
@@ -141,6 +148,7 @@ pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
             &COMPARISON_RULE
         }
         TokenType::String => &STRING_RULE,
+        TokenType::Identifier => &VARIABLE_RULE,
         _ => &PLACEHOLDER_PARSERULE,
     }
 }

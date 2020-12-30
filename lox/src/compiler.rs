@@ -260,6 +260,20 @@ impl<'a> Compiler<'a> {
         self.emit_constant(Value::String(string_ref));
     }
 
+    pub fn variable(&mut self) {
+        let var_index = self.make_identifier();
+        if self.match_tt(TokenType::Equal) {
+
+            self.expression();
+
+
+            self.emit_instruction(Instruction::SetGlobal(var_index));
+
+        } else {
+            self.emit_instruction(Instruction::GetGlobal(var_index));
+        }
+    }
+
     pub fn declaration(&mut self) {
         if self.match_tt(TokenType::Var) {
             self.var_declaration()
@@ -292,6 +306,10 @@ impl<'a> Compiler<'a> {
 
     fn parse_variable(&mut self, msg: &str) -> ConstantIndex {
         self.consume(TokenType::Identifier, msg);
+        self.make_identifier()
+    }
+
+    fn make_identifier(&mut self) -> ConstantIndex {
         let lox_str = self.heap.intern_string(self.previous.description);
         self.make_constant(Value::String(lox_str))
     }

@@ -125,6 +125,25 @@ impl Vm {
                     let value = self.peek(0).clone();
                     self.globals.insert(var_name, value);
                 }
+                Instruction::SetGlobal(var_index) => {
+                    let var_name: Gc<LoxStr> = self.chunk.get_value(*var_index).try_into().unwrap();
+                    let value = self.peek(0).clone();
+                    if let None = self.globals.insert(var_name.clone(), value) {
+                        self.globals.remove(&var_name);
+                        self.runtime_error(format!("Undefined variable '{}'.", var_name));
+                        return InterpreterResult::RuntimeError;
+
+                    }
+                }
+                Instruction::GetGlobal(var_index) => {
+                    let var_name: Gc<LoxStr> = self.chunk.get_value(*var_index).try_into().unwrap();
+                    if let Some(value) = self.globals.get(&var_name) {
+                        self.stack.push(value.clone());
+                    } else {
+                        self.runtime_error(format!("Undefined variable '{}'.", var_name));
+                    }
+
+                }
             };
             self.instr_iter.next();
 
@@ -136,7 +155,8 @@ impl Vm {
         return InterpreterResult::Ok;
     }
 
-    fn runtime_error(&mut self, message: &str) {
+    fn runtime_error(&mut self, message: impl AsRef<str>) {
+        let message = message.as_ref();
         eprintln!("{}", message);
         let instr_index = self.instr_iter.peek().unwrap().0;
         let line_no = self.chunk.get_line(instr_index);
