@@ -1,14 +1,5 @@
 /// Currently this is just the bare beginnings of a scaffold for the lox GC.
-use std::{
-    borrow::Borrow,
-    cell::RefCell,
-    collections::{HashMap, HashSet},
-    fmt::{self, Display, Formatter},
-    hash::Hasher,
-    ops::Deref,
-    ptr::NonNull,
-    rc::Rc,
-};
+use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::Deref, ptr::NonNull, rc::Rc};
 use std::{hash::Hash, mem};
 
 pub struct Heap {
@@ -81,6 +72,33 @@ impl<T> Gc<T> {
     }
 }
 
+impl<T> From<*mut HeapObj<T>> for Gc<T> {
+    fn from(val: *mut HeapObj<T>) -> Self {
+        let ptr = unsafe { NonNull::new_unchecked(val) };
+        Self { ptr }
+    }
+}
+
+impl<T> Deref for Gc<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.as_obj().data
+    }
+}
+
+impl<T> Borrow<T> for Gc<T> {
+    fn borrow(&self) -> &T {
+        &self.as_obj().data
+    }
+}
+
+impl<T> BorrowMut<T> for Gc<T> {
+    fn borrow_mut(&mut self) -> &mut T {
+        &mut self.as_obj_mut().data
+    }
+}
+
 impl<T> AsRef<T> for Gc<T> {
     fn as_ref(&self) -> &T {
         &self.as_obj().data
@@ -93,20 +111,6 @@ impl<T> AsMut<T> for Gc<T> {
     }
 }
 
-impl<T> From<*mut HeapObj<T>> for Gc<T> {
-    fn from(val: *mut HeapObj<T>) -> Self {
-        let ptr = unsafe { NonNull::new_unchecked(val) };
-        Self { ptr }
-    }
-}
-
-impl<T> Deref for Gc<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.as_ref()
-    }
-}
 
 impl<T> Display for Gc<T>
 where
@@ -164,14 +168,14 @@ impl Deref for LoxStr {
     }
 }
 
-impl Borrow<str> for LoxStr {
-    fn borrow(&self) -> &str {
+impl AsRef<str> for LoxStr {
+    fn as_ref(&self) -> &str {
         self.as_str()
     }
 }
 
-impl AsRef<str> for LoxStr {
-    fn as_ref(&self) -> &str {
+impl Borrow<str> for LoxStr {
+    fn borrow(&self) -> &str {
         self.as_str()
     }
 }
