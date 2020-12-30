@@ -1,5 +1,10 @@
 use fmt::{Display, Formatter};
-use std::{convert::{TryFrom, TryInto}, error::Error, fmt, rc::Rc};
+use std::{
+    convert::{TryFrom, TryInto},
+    error::Error,
+    fmt,
+    rc::Rc,
+};
 
 pub type Number = f64;
 pub type ConstantIndex = u8;
@@ -51,7 +56,7 @@ pub enum Value {
     Nil,
     Number(Number),
     Boolean(bool),
-    String(Gc<LoxStr>)
+    String(Gc<LoxStr>),
 }
 
 impl From<Number> for Value {
@@ -87,7 +92,6 @@ impl Iterator for ChunkIterator<'_> {
         }
     }
 }
-
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -143,10 +147,10 @@ impl Chunk {
         };
 
         let extension = match instr {
-            Instruction::Constant(const_index) => {
-                self.values[*const_index as usize].to_string()
+            Instruction::Constant(var_index) | Instruction::DefineGlobal(var_index) => {
+                self.get_value(*var_index).to_string()
             }
-            _ => {"".to_owned()}
+            _ => "".to_owned(),
         };
 
         return format!("{:0>4} {: >4} {} {}", index, line_str, instr, extension);
@@ -232,7 +236,7 @@ impl TryFrom<&Value> for Number {
         if let Value::Number(num) = value {
             Ok(*num)
         } else {
-            Err(PlaceholderError{})
+            Err(PlaceholderError {})
         }
     }
 }
@@ -243,7 +247,7 @@ impl TryFrom<&Value> for bool {
         if let Value::Boolean(val) = value {
             Ok(*val)
         } else {
-            Err(PlaceholderError{})
+            Err(PlaceholderError {})
         }
     }
 }
@@ -254,7 +258,7 @@ impl TryFrom<&Value> for Gc<LoxStr> {
         if let Value::String(val) = value {
             Ok(val.clone())
         } else {
-            Err(PlaceholderError{})
+            Err(PlaceholderError {})
         }
     }
 }
