@@ -255,16 +255,45 @@ impl<'a> Compiler<'a> {
 
     pub fn string(&mut self) {
         let lexeme_len = self.previous.description.len();
-        let string: LoxStr = self.previous.description[1..lexeme_len - 1].into();
+        let string = &self.previous.description[1..lexeme_len - 1];
         let string_ref = self.heap.intern_string(string);
         self.emit_constant(Value::String(string_ref));
     }
 
     pub fn declaration(&mut self) {
-        self.statement();
+        if self.match_tt(TokenType::Var) {
+            self.var_declaration()
+        } else {
+            self.statement();
+        }
+
         if self.panic_mode {
             self.synchronize();
         }
+    }
+
+    pub fn var_declaration(&mut self) {
+        let var_name_index = self.parse_variable("Expect variable name.");
+
+        if self.match_tt(TokenType::Equal) {
+            self.expression();
+        } else {
+            self.emit_instruction(Instruction::Nil);
+        }
+
+        self.consume(TokenType::SemiColon, "Expect ';' after variable declaration.");
+
+        self.define_variable(var_name_index);
+    }
+
+    fn define_variable(&mut self, global: ConstantIndex) {
+        self.emit_instruction(Instruction::DefineGlobal(global));
+    }
+
+    fn parse_variable(&mut self, msg: &str) -> ConstantIndex {
+        self.consume(TokenType::Identifier, msg);
+        let lox_str = self.heap.intern_string(self.previous.description);
+        self.make_constant(Value::String(lox_str))
     }
 
     pub fn statement(&mut self) {

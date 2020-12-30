@@ -20,7 +20,16 @@ impl Heap {
         }
     }
 
-    pub fn intern_string(&self, string: LoxStr) -> Gc<LoxStr> {
+    pub fn intern_string(&self, str_ref: impl AsRef<str>) -> Gc<LoxStr> {
+        // FIXME: This LoxStr may be discarded if it already exists in the intern cache.
+        // To create this we clone the input ref hence potentially allocating uncessarily.
+        // Need to clone only when necessary.
+        let string = LoxStr::from(str_ref.as_ref());
+        self.intern_string_internal(string)
+    }
+
+    // This is separated from intern_string to avoid Generic impl duplication.
+    fn intern_string_internal(&self, string: LoxStr) -> Gc<LoxStr> {
         let mut interned_strs = self.interned_strs.borrow_mut();
         let heapobj = interned_strs.get_mut(&string);
 
@@ -51,13 +60,13 @@ impl<T> HeapObj<T> {
     }
 }
 
-// impl<T> Hash for HeapObj<T> where T: Hash {
-//     fn hash<H: Hasher>(&self, state: &mut H) {
-//         self.data.hash(state);
-//     }
-// }
+impl<T> Hash for HeapObj<T> where T: Hash {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.data.hash(state);
+    }
+}
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct Gc<T> {
     ptr: NonNull<HeapObj<T>>,
 }

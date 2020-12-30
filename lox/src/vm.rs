@@ -1,6 +1,13 @@
-use crate::{heap::{Heap, LoxStr}, interpreter::{InterpreterResult, VmInit}, opcodes::{Chunk, ChunkIterator, Instruction, Number, Value}, precedence::ParseFn};
+use crate::{
+    heap::{Gc, Heap, LoxStr},
+    interpreter::{InterpreterResult, VmInit},
+    opcodes::{Chunk, ChunkIterator, Instruction, Number, Value},
+    precedence::ParseFn,
+};
 use std::{
+    collections::HashMap,
     convert::{TryFrom, TryInto},
+    hash::Hash,
     intrinsics::transmute,
     iter::{Enumerate, Peekable},
     mem,
@@ -17,6 +24,7 @@ pub struct Vm {
     chunk: Chunk,
     stack: Stack,
     instr_iter: Curr,
+    globals: HashMap<Gc<LoxStr>, Value>,
     had_runtime_error: bool,
 }
 
@@ -25,13 +33,14 @@ impl Vm {
         // https://stackoverflow.com/questions/43952104/how-can-i-store-a-chars-iterator-in-the-same-struct-as-the-string-it-is-iteratin
         // https://stackoverflow.com/questions/32300132/why-cant-i-store-a-value-and-a-reference-to-that-value-in-the-same-struct
         // This should be safe since we will not move Chunk away while using instr_iter.
-        let VmInit {chunk, heap} = vm_init;
+        let VmInit { chunk, heap } = vm_init;
         let instr_iter = unsafe { mem::transmute(chunk.instr_iter().enumerate().peekable()) };
         Vm {
             heap,
             chunk,
             stack: Vec::with_capacity(STACK_MIN_SIZE),
             instr_iter,
+            globals: HashMap::new(),
             had_runtime_error: false,
         }
     }
@@ -111,6 +120,11 @@ impl Vm {
                 Instruction::Pop => {
                     self.stack.pop();
                 }
+                Instruction::DefineGlobal(var_index) => {
+                    let var_name: Gc<LoxStr> = self.chunk.get_value(*var_index).try_into().unwrap();
+                    let value = self.peek(0).clone();
+                    self.globals.insert(var_name, value);
+                }
             };
             self.instr_iter.next();
 
@@ -130,8 +144,7 @@ impl Vm {
         self.had_runtime_error = true;
     }
 
-    fn perform_binary_op_plus(& mut self)
-    {
+    fn perform_binary_op_plus(&mut self) {
         let lhs = self.peek(1);
         let rhs = self.peek(0);
 
@@ -140,10 +153,9 @@ impl Vm {
         match (lhs, rhs) {
             (Value::String(lhs), Value::String(rhs)) => {
                 let mut acc = lhs.to_string();
-                
+
                 acc = acc + rhs.as_str();
-                let string = LoxStr::from(acc);
-                let string_ref = self.heap.intern_string(string);
+                let string_ref = self.heap.intern_string(acc);
                 res = string_ref.into();
             }
             (Value::Number(lhs), Value::Number(rhs)) => {
@@ -163,7 +175,8 @@ impl Vm {
     fn perform_binary_op<T, V>(&mut self, op: impl Fn(T, T) -> V)
     where
         Value: From<V>,
-        T: TryFrom<Value>,
+        for<'a> T: TryFrom<&'a Value>,
+        T: Copy,
     {
         self.perform_binary_op_gen(op, "Operands must both be either numbers.");
     }
@@ -171,21 +184,25 @@ impl Vm {
     fn perform_binary_op_gen<T, V>(&mut self, op: impl Fn(T, T) -> V, error_msg: &str)
     where
         Value: From<V>,
-        T: TryFrom<Value>,
+        for<'a> T: TryFrom<&'a Value>,
+        T: Copy,
     {
-        // FIXME: Using &Value here gave a mutable borrow while immutable borrow error down the line.
-        // Find a way to use &Value instead of Value.
-        let rhs = self.peek(0).clone().try_into();
-        let lhs = self.peek(1).clone().try_into();
+        let rhs = self.peek(1).try_into();
+        let lhs = self.peek(0).try_into();
 
-        let res: Value;
-        if let (Ok(lhs), Ok(rhs)) = (lhs, rhs) {
-            res = op(lhs, rhs).into();
-            self.stack.pop();
-            self.stack.pop();
-            self.stack.push(res);
-        } else {
-            self.runtime_error(error_msg);
+        let temp = (lhs, rhs);
+        match &temp {
+            (Ok(ref lhs), Ok(ref rhs)) => {
+                let res = op(*lhs, *rhs).into();
+                drop(temp);
+                self.stack.pop();
+                self.stack.pop();
+                self.stack.push(res);
+            }
+            _ => {
+                drop(temp);
+                self.runtime_error(error_msg);
+            }
         }
     }
 }

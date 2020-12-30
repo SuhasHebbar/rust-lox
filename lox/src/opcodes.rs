@@ -36,6 +36,8 @@ pub enum Instruction {
     Print,
 
     Pop,
+
+    DefineGlobal(ConstantIndex),
 }
 
 pub struct Chunk {
@@ -191,31 +193,64 @@ impl Decode for u8 {
     }
 }
 
-impl TryFrom<Value> for Number {
+// impl TryFrom<Value> for Number {
+//     type Error = PlaceholderError;
+//     fn try_from(value: Value) -> Result<Self, Self::Error> {
+//         if let Value::Number(num) = value {
+//             Ok(num)
+//         } else {
+//             Err(PlaceholderError{})
+//         }
+//     }
+// }
+
+// impl TryFrom<Value> for bool {
+//     type Error = PlaceholderError;
+//     fn try_from(value: Value) -> Result<Self, Self::Error> {
+//         if let Value::Boolean(val) = value {
+//             Ok(val)
+//         } else {
+//             Err(PlaceholderError{})
+//         }
+//     }
+// }
+
+// impl TryFrom<Value> for Gc<LoxStr> {
+//     type Error = PlaceholderError;
+//     fn try_from(value: Value) -> Result<Self, Self::Error> {
+//         if let Value::String(val) = value {
+//             Ok(val.clone())
+//         } else {
+//             Err(PlaceholderError{})
+//         }
+//     }
+// }
+
+impl TryFrom<&Value> for Number {
     type Error = PlaceholderError;
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
         if let Value::Number(num) = value {
-            Ok(num)
+            Ok(*num)
         } else {
             Err(PlaceholderError{})
         }
     }
 }
 
-impl TryFrom<Value> for bool {
+impl TryFrom<&Value> for bool {
     type Error = PlaceholderError;
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
         if let Value::Boolean(val) = value {
-            Ok(val)
+            Ok(*val)
         } else {
             Err(PlaceholderError{})
         }
     }
 }
 
-impl TryFrom<Value> for Gc<LoxStr> {
+impl TryFrom<&Value> for Gc<LoxStr> {
     type Error = PlaceholderError;
-    fn try_from(value: Value) -> Result<Self, Self::Error> {
+    fn try_from(value: &Value) -> Result<Self, Self::Error> {
         if let Value::String(val) = value {
             Ok(val.clone())
         } else {
