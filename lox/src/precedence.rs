@@ -53,84 +53,84 @@ impl Precedence {
     }
 }
 
-pub type ParseFn = Option<&'static dyn Fn(&mut Compiler)>;
+pub type ParseFn = Option<&'static dyn Fn(&mut Compiler, bool)>;
 
 pub struct ParseRule {
     pub prefix: ParseFn,
     pub infix: ParseFn,
-    pub precedence: Precedence,
+    pub curr_prec: Precedence,
 }
 
 const PLACEHOLDER_PARSERULE: ParseRule = ParseRule {
     infix: None,
     prefix: None,
-    precedence: Precedence::None,
+    curr_prec: Precedence::None,
 };
 
 const LEFT_PAREN_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler| this.grouping()),
+    prefix: Some(&|this: &mut Compiler, assign: bool| this.grouping()),
     infix: None,
-    precedence: Precedence::None,
+    curr_prec: Precedence::None,
 };
 
 const MINUS_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler| this.unary()),
-    infix: Some(&|this: &mut Compiler| this.binary()),
-    precedence: Precedence::Term,
+    prefix: Some(&|this: &mut Compiler, assign: bool| this.unary()),
+    infix: Some(&|this: &mut Compiler, assign: bool| this.binary()),
+    curr_prec: Precedence::Term,
 };
 
 const PLUS_RULE: ParseRule = ParseRule {
     prefix: None,
-    infix: Some(&|this: &mut Compiler| this.binary()),
-    precedence: Precedence::Term,
+    infix: Some(&|this: &mut Compiler, assign: bool| this.binary()),
+    curr_prec: Precedence::Term,
 };
 
 const SLASH_AND_STAR_RULE: ParseRule = ParseRule {
     prefix: None,
-    infix: Some(&|this: &mut Compiler| this.binary()),
-    precedence: Precedence::Factor,
+    infix: Some(&|this: &mut Compiler, assign: bool| this.binary()),
+    curr_prec: Precedence::Factor,
 };
 
 const NUMBER_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler| this.number()),
+    prefix: Some(&|this: &mut Compiler, assign: bool| this.number()),
     infix: None,
-    precedence: Precedence::None,
+    curr_prec: Precedence::None,
 };
 
 const LITERAL_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler| this.literal()),
+    prefix: Some(&|this: &mut Compiler, assign: bool| this.literal()),
     infix: None,
-    precedence: Precedence::None,
+    curr_prec: Precedence::None,
 };
 
 const BANG_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler| this.unary()),
+    prefix: Some(&|this: &mut Compiler, assign: bool| this.unary()),
     infix: None,
-    precedence: Precedence::None,
+    curr_prec: Precedence::None,
 };
 
 const EQUALITY_RULE: ParseRule = ParseRule {
     prefix: None,
-    infix: Some(&|this: &mut Compiler| this.binary()),
-    precedence: Precedence::Equality,
+    infix: Some(&|this: &mut Compiler, assign: bool| this.binary()),
+    curr_prec: Precedence::Equality,
 };
 
 const COMPARISON_RULE: ParseRule = ParseRule {
     prefix: None,
-    infix: Some(&|this: &mut Compiler| this.binary()),
-    precedence: Precedence::Comparison,
+    infix: Some(&|this: &mut Compiler, assign: bool| this.binary()),
+    curr_prec: Precedence::Comparison,
 };
 
 const STRING_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler| this.string()),
+    prefix: Some(&|this: &mut Compiler, assign: bool| this.string()),
     infix: None,
-    precedence: Precedence::None,
+    curr_prec: Precedence::None,
 };
 
 const VARIABLE_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler| this.variable()),
+    prefix: Some(&|this: &mut Compiler, assign: bool| this.variable(assign)),
     infix: None,
-    precedence: Precedence::None,
+    curr_prec: Precedence::None,
 };
 
 

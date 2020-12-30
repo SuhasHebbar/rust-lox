@@ -1,8 +1,4 @@
-use crate::{
-    heap::{Heap, LoxStr},
-    opcodes::{ConstantIndex, Number},
-    precedence::{parse_rule, ParseFn, Precedence},
-};
+use crate::{heap::{Heap, LoxStr}, opcodes::{ConstantIndex, Number}, precedence::{ParseFn, ParseRule, Precedence, parse_rule}};
 use std::{ptr, todo};
 
 use crate::{
@@ -226,7 +222,7 @@ impl<'a> Compiler<'a> {
         let op_type = self.previous.kind;
 
         let prule = parse_rule(op_type);
-        self.parse_precedence(prule.precedence.next_greater());
+        self.parse_precedence(prule.curr_prec.next_greater());
 
         match op_type {
             TokenType::Plus => self.emit_instruction(Instruction::Add),
@@ -260,15 +256,12 @@ impl<'a> Compiler<'a> {
         self.emit_constant(Value::String(string_ref));
     }
 
-    pub fn variable(&mut self) {
+    pub fn variable(&mut self, assign: bool) {
         let var_index = self.make_identifier();
-        if self.match_tt(TokenType::Equal) {
-
+        if self.match_tt(TokenType::Equal) && assign {
             self.expression();
 
-
             self.emit_instruction(Instruction::SetGlobal(var_index));
-
         } else {
             self.emit_instruction(Instruction::GetGlobal(var_index));
         }
@@ -295,7 +288,10 @@ impl<'a> Compiler<'a> {
             self.emit_instruction(Instruction::Nil);
         }
 
-        self.consume(TokenType::SemiColon, "Expect ';' after variable declaration.");
+        self.consume(
+            TokenType::SemiColon,
+            "Expect ';' after variable declaration.",
+        );
 
         self.define_variable(var_name_index);
     }
@@ -338,12 +334,13 @@ impl<'a> Compiler<'a> {
         self.parse_precedence(Precedence::Assignment);
     }
 
-    fn parse_precedence(&mut self, precedence: Precedence) {
-        let prefix_fn = parse_rule(self.current.kind).prefix;
+    fn parse_precedence(&mut self, prec_bound: Precedence) {
+        let ParseRule {prefix: prefix_fn, curr_prec, ..} = parse_rule(self.current.kind);
+        let can_assign = *curr_prec <= Precedence::Assignment;
 
         if let Some(prefix_fn) = prefix_fn {
             self.advance();
-            prefix_fn(self);
+            prefix_fn(self,can_assign);
         } else {
             self.error_at_previous("Unexpected expression.");
             return;
@@ -351,12 +348,12 @@ impl<'a> Compiler<'a> {
 
         loop {
             let prule = parse_rule(self.current.kind);
-            if prule.precedence <= precedence {
+            if prule.curr_prec <= prec_bound {
                 break;
             }
 
             self.advance();
-            (prule.infix.unwrap())(self);
+            (prule.infix.unwrap())(self, can_assign);
         }
     }
 }
