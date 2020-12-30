@@ -31,6 +31,11 @@ pub enum Instruction {
     Nil,
     True,
     False,
+
+    // Dedicated Print instruction
+    Print,
+
+    Pop,
 }
 
 pub struct Chunk {
@@ -81,13 +86,14 @@ impl Iterator for ChunkIterator<'_> {
     }
 }
 
+
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Value::Nil => write!(f, "nil"),
             Value::Number(num) => write!(f, "{}", num),
             Value::Boolean(val) => write!(f, "{}", val),
-            Value::String(string) => write!(f, "'{}'", string),
+            Value::String(string) => write!(f, "{}", string),
         }
     }
 }

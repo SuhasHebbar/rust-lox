@@ -1,5 +1,9 @@
-use crate::{heap::{Heap, LoxStr}, opcodes::{ConstantIndex, Number}, precedence::{parse_rule, ParseFn, Precedence}};
-use std::ptr;
+use crate::{
+    heap::{Heap, LoxStr},
+    opcodes::{ConstantIndex, Number},
+    precedence::{parse_rule, ParseFn, Precedence},
+};
+use std::{ptr, todo};
 
 use crate::{
     opcodes::Chunk,
@@ -17,7 +21,7 @@ pub struct Compiler<'a> {
     pub had_error: bool,
     panic_mode: bool,
     pub chunk: Chunk,
-    pub heap: Heap
+    pub heap: Heap,
 }
 
 impl<'a> Compiler<'a> {
@@ -31,13 +35,16 @@ impl<'a> Compiler<'a> {
             had_error: false,
             panic_mode: false,
             chunk: Chunk::new(),
-            heap: Heap::new()
+            heap: Heap::new(),
         }
     }
 
     pub fn compile(&mut self) -> bool {
         self.advance();
-        self.expression();
+
+        while !self.match_tt(TokenType::EOF) {
+            self.declaration()
+        }
 
         // This shouldn't be needed as the scanner iterator should return EOF
         // self.consume(EOF, "End of Expression");
@@ -62,6 +69,19 @@ impl<'a> Compiler<'a> {
             self.advance();
         } else {
             self.error_at_current(message);
+        }
+    }
+
+    fn check(&self, token_type: TokenType) -> bool {
+        self.current.kind == token_type
+    }
+
+    fn match_tt(&mut self, token_type: TokenType) -> bool {
+        if self.check(token_type) {
+            self.advance();
+            true
+        } else {
+            false
         }
     }
 
@@ -147,6 +167,30 @@ impl<'a> Compiler<'a> {
         self.emit_instruction(Instruction::Constant(constant_index));
     }
 
+    fn synchronize(&mut self) {
+        self.panic_mode = false;
+
+        while self.current.kind != TokenType::EOF {
+            if self.previous.kind == TokenType::SemiColon {
+                return;
+            }
+
+            match self.current.kind {
+                TokenType::Class
+                | TokenType::Fun
+                | TokenType::Var
+                | TokenType::For
+                | TokenType::If
+                | TokenType::While
+                | TokenType::Print
+                | TokenType::Return => {
+                    return;
+                }
+                _ => self.advance(),
+            }
+        }
+    }
+
     pub fn number(&mut self) {
         let value: Number = self.previous.description.parse().unwrap();
         self.emit_constant(Value::Number(value))
@@ -210,10 +254,37 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn string(&mut self) {
-        let lexeme_len  = self.previous.description.len();
+        let lexeme_len = self.previous.description.len();
         let string: LoxStr = self.previous.description[1..lexeme_len - 1].into();
         let string_ref = self.heap.intern_string(string);
         self.emit_constant(Value::String(string_ref));
+    }
+
+    pub fn declaration(&mut self) {
+        self.statement();
+        if self.panic_mode {
+            self.synchronize();
+        }
+    }
+
+    pub fn statement(&mut self) {
+        if self.match_tt(TokenType::Print) {
+            self.print_statement();
+        } else {
+            self.expression_statement();
+            self.consume(TokenType::SemiColon, "Expect ';' after value.");
+            self.emit_instruction(Instruction::Pop);
+        }
+    }
+
+    pub fn expression_statement(&mut self) {
+        self.expression();
+    }
+
+    pub fn print_statement(&mut self) {
+        self.expression();
+        self.consume(TokenType::SemiColon, "Expect ';' after value.");
+        self.emit_instruction(Instruction::Print);
     }
 
     pub fn expression(&mut self) {

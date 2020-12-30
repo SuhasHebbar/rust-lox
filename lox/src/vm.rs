@@ -54,7 +54,7 @@ impl Vm {
 
             match instr {
                 Instruction::Return => {
-                    println!("return {}", self.stack.pop().unwrap());
+                    // println!("return {}", self.stack.pop().unwrap());
                     return InterpreterResult::Ok;
                 }
                 Instruction::Constant(cin) => {
@@ -104,6 +104,13 @@ impl Vm {
                 Instruction::Nil => self.stack.push(Value::Nil),
                 Instruction::True => self.stack.push(Value::Boolean(true)),
                 Instruction::False => self.stack.push(Value::Boolean(false)),
+                Instruction::Print => {
+                    let top = self.stack.pop().unwrap();
+                    println!("{}", top);
+                }
+                Instruction::Pop => {
+                    self.stack.pop();
+                }
             };
             self.instr_iter.next();
 
