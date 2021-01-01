@@ -23,7 +23,7 @@ pub struct Compiler<'a> {
     panic_mode: bool,
     pub chunk: Chunk,
     pub heap: Heap,
-    pub state: VmState<'a>,
+    pub state: StackSim<'a>,
 }
 
 impl<'a> Compiler<'a> {
@@ -38,7 +38,7 @@ impl<'a> Compiler<'a> {
             panic_mode: false,
             chunk: Chunk::new(),
             heap: Heap::new(),
-            state: VmState::new(),
+            state: StackSim::new(),
         }
     }
 
@@ -475,16 +475,16 @@ impl<'a> Compiler<'a> {
     }
 }
 
-pub struct VmState<'a> {
+pub struct StackSim<'a> {
     pub locals: Vec<Local<'a>>,
     pub scope_depth: isize,
 }
 
 const LOCALS_MAX_CAPACITY: usize = u8::MAX as usize;
 
-impl<'a> VmState<'a> {
+impl<'a> StackSim<'a> {
     fn new() -> Self {
-        VmState {
+        Self {
             locals: Vec::with_capacity(LOCALS_MAX_CAPACITY),
             scope_depth: 0,
         }
