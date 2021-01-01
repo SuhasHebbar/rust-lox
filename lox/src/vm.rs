@@ -16,6 +16,8 @@ use std::{
 
 const STACK_MIN_SIZE: usize = 256;
 
+pub type StackIndex = u8;
+
 type Stack = Vec<Value>;
 type Curr = Peekable<Enumerate<ChunkIterator<'static>>>;
 
@@ -122,7 +124,7 @@ impl Vm {
                 }
                 Instruction::DefineGlobal(var_index) => {
                     let var_name: Gc<LoxStr> = self.chunk.get_value(*var_index).try_into().unwrap();
-                    let value = self.peek(0).clone();
+                    let value = self.stack.pop().unwrap();
                     self.globals.insert(var_name, value);
                 }
                 Instruction::SetGlobal(var_index) => {
@@ -132,7 +134,6 @@ impl Vm {
                         self.globals.remove(&var_name);
                         self.runtime_error(format!("Undefined variable '{}'.", var_name));
                         return InterpreterResult::RuntimeError;
-
                     }
                 }
                 Instruction::GetGlobal(var_index) => {
@@ -142,7 +143,14 @@ impl Vm {
                     } else {
                         self.runtime_error(format!("Undefined variable '{}'.", var_name));
                     }
-
+                }
+                Instruction::GetLocal(var_index) => {
+                    self.stack.push(self.stack[*var_index as usize]);
+                }
+                Instruction::SetLocal(var_index) => {
+                    let var_index = *var_index;
+                    
+                    self.stack[var_index as usize] = *self.peek(0);
                 }
             };
             self.instr_iter.next();

@@ -1,4 +1,9 @@
-use crate::{heap::{Heap, LoxStr}, opcodes::{ConstantIndex, Number}, precedence::{ParseFn, ParseRule, Precedence, parse_rule}};
+use crate::{
+    heap::{Heap, LoxStr},
+    opcodes::{ConstantIndex, Number},
+    precedence::{parse_rule, ParseFn, ParseRule, Precedence},
+    vm::StackIndex,
+};
 use std::{ptr, todo};
 
 use crate::{
@@ -18,6 +23,7 @@ pub struct Compiler<'a> {
     panic_mode: bool,
     pub chunk: Chunk,
     pub heap: Heap,
+    pub state: VmState<'a>,
 }
 
 impl<'a> Compiler<'a> {
@@ -32,6 +38,7 @@ impl<'a> Compiler<'a> {
             panic_mode: false,
             chunk: Chunk::new(),
             heap: Heap::new(),
+            state: VmState::new(),
         }
     }
 
@@ -93,6 +100,15 @@ impl<'a> Compiler<'a> {
 
             self.error_at_current(self.current.description);
         }
+    }
+
+    fn add_local(&mut self) {
+        if self.state.size() == LOCALS_MAX_CAPACITY {
+            self.error_at_previous("Too many local variables in function.");
+            return;
+        }
+
+        self.state.add_local(self.previous);
     }
 
     fn error_at_current(&mut self, message: &str) {
@@ -257,14 +273,42 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn variable(&mut self, assign: bool) {
-        let var_index = self.make_identifier();
+        let arg = self.resolve_local();
+
+        let set_op;
+        let get_op;
+
+        if let Some(arg) = arg {
+            get_op = Instruction::GetLocal(arg);
+            set_op = Instruction::SetLocal(arg);
+        } else {
+            let var_index = self.make_identifier();
+            set_op = Instruction::SetGlobal(var_index);
+            get_op = Instruction::GetGlobal(var_index);
+        }
+
         if self.match_tt(TokenType::Equal) && assign {
             self.expression();
 
-            self.emit_instruction(Instruction::SetGlobal(var_index));
+            self.emit_instruction(set_op);
         } else {
-            self.emit_instruction(Instruction::GetGlobal(var_index));
+            self.emit_instruction(get_op);
         }
+    }
+
+    fn resolve_local(&mut self) -> Option<StackIndex> {
+        for (i, local) in self.state.locals.iter().enumerate().rev() {
+            if local.name.description == self.previous.description {
+                if local.depth == -1 {
+
+                    self.error_at_previous("Can't read local variable in its own initializer.");
+                }
+
+                return Some(i as u8);
+            }
+        }
+
+        None
     }
 
     pub fn declaration(&mut self) {
@@ -297,12 +341,45 @@ impl<'a> Compiler<'a> {
     }
 
     fn define_variable(&mut self, global: ConstantIndex) {
-        self.emit_instruction(Instruction::DefineGlobal(global));
+        if self.state.scope_depth > 0 {
+            self.state.mark_initialized();
+        } else {
+            self.emit_instruction(Instruction::DefineGlobal(global));
+        }
     }
 
     fn parse_variable(&mut self, msg: &str) -> ConstantIndex {
         self.consume(TokenType::Identifier, msg);
+
+        self.declare_variable();
+        if self.state.scope_depth > 0 {
+            return 0;
+        }
+
         self.make_identifier()
+    }
+
+    fn declare_variable(&mut self) {
+        if self.state.scope_depth == 0 {
+            return;
+        }
+
+        for (i, local) in self.state.locals.iter().enumerate().rev() {
+            if local.depth != -1 && local.depth < self.state.scope_depth {
+                break;
+            }
+
+            if local.name.description == self.previous.description {
+                Self::error_at(
+                    &mut self.had_error,
+                    &mut self.panic_mode,
+                    &self.previous,
+                    "Already variable with this name in this scope.",
+                );
+            }
+        }
+
+        self.add_local();
     }
 
     fn make_identifier(&mut self) -> ConstantIndex {
@@ -313,11 +390,47 @@ impl<'a> Compiler<'a> {
     pub fn statement(&mut self) {
         if self.match_tt(TokenType::Print) {
             self.print_statement();
+        } else if self.match_tt(TokenType::LeftBrace) {
+            self.begin_scope();
+            self.block();
+            self.end_scope();
         } else {
             self.expression_statement();
             self.consume(TokenType::SemiColon, "Expect ';' after value.");
             self.emit_instruction(Instruction::Pop);
         }
+    }
+
+    fn begin_scope(&mut self) {
+        self.state.begin_scope();
+    }
+
+    fn end_scope(&mut self) {
+        self.state.end_scope();
+
+        for i in (0..self.state.size()).rev() {
+            let local = &self.state.locals[i];
+            if self.state.scope_depth < local.depth {
+                self.state.locals.pop();
+                self.emit_instruction(Instruction::Pop);
+            } else {
+                break;
+            }
+        }
+        // for local in self.state.locals.iter().rev() {
+        //     if self.state.scope_depth < local.depth {
+        //         self.state.locals.pop();
+        //         self.emit_instruction(Instruction::Pop);
+        //     }
+        // }
+    }
+
+    pub fn block(&mut self) {
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::EOF) {
+            self.declaration();
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after block.");
     }
 
     pub fn expression_statement(&mut self) {
@@ -335,12 +448,16 @@ impl<'a> Compiler<'a> {
     }
 
     fn parse_precedence(&mut self, prec_bound: Precedence) {
-        let ParseRule {prefix: prefix_fn, curr_prec, ..} = parse_rule(self.current.kind);
+        let ParseRule {
+            prefix: prefix_fn,
+            curr_prec,
+            ..
+        } = parse_rule(self.current.kind);
         let can_assign = *curr_prec <= Precedence::Assignment;
 
         if let Some(prefix_fn) = prefix_fn {
             self.advance();
-            prefix_fn(self,can_assign);
+            prefix_fn(self, can_assign);
         } else {
             self.error_at_previous("Unexpected expression.");
             return;
@@ -348,12 +465,57 @@ impl<'a> Compiler<'a> {
 
         loop {
             let prule = parse_rule(self.current.kind);
-            if prule.curr_prec <= prec_bound {
+            if prec_bound <= prule.curr_prec {
+                self.advance();
+                (prule.infix.unwrap())(self, can_assign);
+            } else {
                 break;
             }
-
-            self.advance();
-            (prule.infix.unwrap())(self, can_assign);
         }
     }
+}
+
+pub struct VmState<'a> {
+    pub locals: Vec<Local<'a>>,
+    pub scope_depth: isize,
+}
+
+const LOCALS_MAX_CAPACITY: usize = u8::MAX as usize;
+
+impl<'a> VmState<'a> {
+    fn new() -> Self {
+        VmState {
+            locals: Vec::with_capacity(LOCALS_MAX_CAPACITY),
+            scope_depth: 0,
+        }
+    }
+
+    fn add_local(&mut self, token: Token<'a>) {
+        self.locals.push(Local {
+            name: token,
+            depth: -1,
+        });
+    }
+
+    fn mark_initialized(&mut self) {
+        let len = self.size() - 1;
+        self.locals[len].depth = self.scope_depth;
+    }
+
+    fn size(&self) -> usize {
+        self.locals.len()
+    }
+
+    fn begin_scope(&mut self) {
+        self.scope_depth += 1;
+    }
+
+    fn end_scope(&mut self) {
+        self.scope_depth -= 1;
+    }
+}
+
+pub struct Local<'a> {
+    name: Token<'a>,
+    depth: isize,
 }

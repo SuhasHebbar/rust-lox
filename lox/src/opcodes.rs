@@ -45,6 +45,9 @@ pub enum Instruction {
     DefineGlobal(ConstantIndex),
     GetGlobal(ConstantIndex),
     SetGlobal(ConstantIndex),
+
+    GetLocal(ConstantIndex),
+    SetLocal(ConstantIndex),
 }
 
 pub struct Chunk {
@@ -53,7 +56,7 @@ pub struct Chunk {
     values: Vec<Value>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Copy)]
 pub enum Value {
     Nil,
     Number(Number),
@@ -152,6 +155,8 @@ impl Chunk {
             Instruction::Constant(var_index)
             | Instruction::DefineGlobal(var_index)
             | Instruction::SetGlobal(var_index)
+            | Instruction::GetLocal(var_index)
+            | Instruction::SetLocal(var_index)
             | Instruction::GetGlobal(var_index) => self.get_value(*var_index).to_string(),
             _ => "".to_owned(),
         };

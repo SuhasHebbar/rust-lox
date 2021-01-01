@@ -66,9 +66,16 @@ impl<T> Hash for HeapObj<T> where T: Hash {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Gc<T> {
     ptr: NonNull<HeapObj<T>>,
+}
+
+impl<T> Copy for Gc<T> {}
+impl<T> Clone for Gc<T> {
+    fn clone(&self) -> Self {
+        *self
+    }
 }
 
 impl<T> Gc<T> {
