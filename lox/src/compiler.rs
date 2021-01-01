@@ -1,10 +1,4 @@
-use crate::{
-    heap::{Heap, LoxStr},
-    opcodes::{ConstantIndex, Number},
-    precedence::{parse_rule, ParseFn, ParseRule, Precedence},
-    vm::StackIndex,
-};
-use std::{ptr, todo};
+use crate::{heap::{Heap}, opcodes::{ChunkIterator, ConstantIndex, Number}, precedence::{parse_rule, ParseRule, Precedence}, vm::StackIndex};
 
 use crate::{
     opcodes::Chunk,
@@ -15,15 +9,15 @@ use crate::{
     scanner::Scanner,
 };
 
+type StringError = &'static str;
+
 pub struct Compiler<'a> {
     scanner: Scanner<'a>,
-    previous: Token<'a>,
-    current: Token<'a>,
-    pub had_error: bool,
-    panic_mode: bool,
-    pub chunk: Chunk,
+    tin: TokenCursor<'a>,
+    pub chunks: Chunks,
     pub heap: Heap,
     pub state: StackSim<'a>,
+    pub errh: ErrorHandler
 }
 
 impl<'a> Compiler<'a> {
@@ -32,13 +26,11 @@ impl<'a> Compiler<'a> {
 
         Compiler {
             scanner,
-            previous: Token::placeholder(),
-            current: Token::placeholder(),
-            had_error: false,
-            panic_mode: false,
-            chunk: Chunk::new(),
+            tin: TokenCursor::new(),
+            chunks: Chunks::new(),
             heap: Heap::new(),
             state: StackSim::new(),
+            errh: ErrorHandler {had_error: false, panic_mode: false}
         }
     }
 
@@ -52,7 +44,7 @@ impl<'a> Compiler<'a> {
         // This shouldn't be needed as the scanner iterator should return EOF
         // self.consume(EOF, "End of Expression");
         self.end_compile();
-        !self.had_error
+        !self.errh.had_error
     }
 
     fn end_compile(&mut self) {
@@ -60,7 +52,7 @@ impl<'a> Compiler<'a> {
 
         #[cfg(feature = "lox_debug")]
         {
-            if self.had_error {
+            if self.errh.had_error {
                 eprintln!("Dumping bytecode to console");
                 eprintln!("{}", self.chunk);
             }
@@ -68,7 +60,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn consume(&mut self, token_type: TokenType, message: &str) {
-        if self.current.kind == token_type {
+        if self.tin.cur.kind == token_type {
             self.advance();
         } else {
             self.error_at_current(message);
@@ -76,7 +68,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn check(&self, token_type: TokenType) -> bool {
-        self.current.kind == token_type
+        self.tin.cur.kind == token_type
     }
 
     fn match_tt(&mut self, token_type: TokenType) -> bool {
@@ -89,16 +81,16 @@ impl<'a> Compiler<'a> {
     }
 
     fn advance(&mut self) {
-        self.previous = self.current;
+        self.tin.pre = self.tin.cur;
 
         loop {
-            self.current = self.scanner.scan_token();
+            self.tin.cur = self.scanner.scan_token();
 
-            if self.current.kind != TokenType::Error {
+            if self.tin.cur.kind != TokenType::Error {
                 break;
             }
 
-            self.error_at_current(self.current.description);
+            self.error_at_current(self.tin.cur.description);
         }
     }
 
@@ -108,66 +100,29 @@ impl<'a> Compiler<'a> {
             return;
         }
 
-        self.state.add_local(self.previous);
+        self.state.add_local(self.tin.pre);
     }
 
     fn error_at_current(&mut self, message: &str) {
-        Self::error_at(
-            &mut self.had_error,
-            &mut self.panic_mode,
-            &self.current,
-            message,
-        );
+        self.errh.error_at_current(&self.tin, message);
     }
 
     fn error_at_previous(&mut self, message: &str) {
-        Self::error_at(
-            &mut self.had_error,
-            &mut self.panic_mode,
-            &self.previous,
-            message,
-        );
-    }
-
-    fn error_at(had_error: &mut bool, panic_mode: &mut bool, token: &Token, message: &str) {
-        if *panic_mode {
-            return;
-        }
-
-        eprint!("[line {}] Error ", token.line);
-
-        if token.kind == TokenType::Error {
-            eprint!("while Scanning");
-        } else {
-            eprint!("at {}", token.description);
-        }
-
-        eprint!(": {}\n", message);
-        *had_error = true;
-        *panic_mode = true;
-    }
-
-    fn current_chunk(&mut self) -> &mut Chunk {
-        &mut self.chunk
+        self.errh.error_at_previous(&self.tin, message);
     }
 
     fn emit_instruction(&mut self, instr: Instruction) {
-        let line = self.previous.line;
-        self.current_chunk().add_instruction(instr, line);
-    }
-
-    fn emit_value(&mut self, value: Value) -> u8 {
-        self.current_chunk().add_value(value)
+        self.chunks.emit_instruction(instr, &self.tin.pre)
     }
 
     fn emit_return(&mut self) {
         self.emit_instruction(Instruction::Return);
     }
 
-    fn make_constant(&mut self, value: Value) -> ConstantIndex {
-        let constant_index = self.emit_value(value);
+    fn make_constant(chunks: &mut Chunks, value: Value, errh: &mut ErrorHandler, cursor: &TokenCursor) -> ConstantIndex {
+        let constant_index = chunks.emit_value(value);
         if constant_index > u8::MAX {
-            self.error_at_previous("Too many constants in one chunk.");
+            errh.error_at_previous(cursor, "Too many constants in one chunk.");
             0
         } else {
             constant_index
@@ -175,19 +130,19 @@ impl<'a> Compiler<'a> {
     }
 
     fn emit_constant(&mut self, value: Value) {
-        let constant_index = self.make_constant(value);
+        let constant_index = Self::make_constant(&mut self.chunks, value, &mut self.errh, &self.tin);
         self.emit_instruction(Instruction::Constant(constant_index));
     }
 
     fn synchronize(&mut self) {
-        self.panic_mode = false;
+        self.errh.panic_mode = false;
 
-        while self.current.kind != TokenType::EOF {
-            if self.previous.kind == TokenType::SemiColon {
+        while self.tin.cur.kind != TokenType::EOF {
+            if self.tin.pre.kind == TokenType::SemiColon {
                 return;
             }
 
-            match self.current.kind {
+            match self.tin.cur.kind {
                 TokenType::Class
                 | TokenType::Fun
                 | TokenType::Var
@@ -204,12 +159,12 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn number(&mut self) {
-        let value: Number = self.previous.description.parse().unwrap();
+        let value: Number = self.tin.pre.description.parse().unwrap();
         self.emit_constant(Value::Number(value))
     }
 
     pub fn literal(&mut self) {
-        match self.previous.kind {
+        match self.tin.pre.kind {
             TokenType::False => self.emit_instruction(Instruction::False),
             TokenType::Nil => self.emit_instruction(Instruction::Nil),
             TokenType::True => self.emit_instruction(Instruction::True),
@@ -223,7 +178,7 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn unary(&mut self) {
-        let op_type = self.previous.kind;
+        let op_type = self.tin.pre.kind;
 
         self.parse_precedence(Precedence::Unary);
 
@@ -235,7 +190,7 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn binary(&mut self) {
-        let op_type = self.previous.kind;
+        let op_type = self.tin.pre.kind;
 
         let prule = parse_rule(op_type);
         self.parse_precedence(prule.curr_prec.next_greater());
@@ -266,8 +221,8 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn string(&mut self) {
-        let lexeme_len = self.previous.description.len();
-        let string = &self.previous.description[1..lexeme_len - 1];
+        let lexeme_len = self.tin.pre.description.len();
+        let string = &self.tin.pre.description[1..lexeme_len - 1];
         let string_ref = self.heap.intern_string(string);
         self.emit_constant(Value::String(string_ref));
     }
@@ -298,7 +253,7 @@ impl<'a> Compiler<'a> {
 
     fn resolve_local(&mut self) -> Option<StackIndex> {
         for (i, local) in self.state.locals.iter().enumerate().rev() {
-            if local.name.description == self.previous.description {
+            if local.name.description == self.tin.pre.description {
                 if local.depth == -1 {
 
                     self.error_at_previous("Can't read local variable in its own initializer.");
@@ -318,7 +273,7 @@ impl<'a> Compiler<'a> {
             self.statement();
         }
 
-        if self.panic_mode {
+        if self.errh.panic_mode {
             self.synchronize();
         }
     }
@@ -369,13 +324,8 @@ impl<'a> Compiler<'a> {
                 break;
             }
 
-            if local.name.description == self.previous.description {
-                Self::error_at(
-                    &mut self.had_error,
-                    &mut self.panic_mode,
-                    &self.previous,
-                    "Already variable with this name in this scope.",
-                );
+            if local.name.description == self.tin.pre.description {
+                self.errh.error_at(&self.tin.pre, "Already variable with this name in this scope.");
             }
         }
 
@@ -383,8 +333,8 @@ impl<'a> Compiler<'a> {
     }
 
     fn make_identifier(&mut self) -> ConstantIndex {
-        let lox_str = self.heap.intern_string(self.previous.description);
-        self.make_constant(Value::String(lox_str))
+        let lox_str = self.heap.intern_string(self.tin.pre.description);
+        Self::make_constant(&mut self.chunks, Value::String(lox_str), &mut self.errh, &self.tin)
     }
 
     pub fn statement(&mut self) {
@@ -452,7 +402,7 @@ impl<'a> Compiler<'a> {
             prefix: prefix_fn,
             curr_prec,
             ..
-        } = parse_rule(self.current.kind);
+        } = parse_rule(self.tin.cur.kind);
         let can_assign = *curr_prec <= Precedence::Assignment;
 
         if let Some(prefix_fn) = prefix_fn {
@@ -464,7 +414,7 @@ impl<'a> Compiler<'a> {
         }
 
         loop {
-            let prule = parse_rule(self.current.kind);
+            let prule = parse_rule(self.tin.cur.kind);
             if prec_bound <= prule.curr_prec {
                 self.advance();
                 (prule.infix.unwrap())(self, can_assign);
@@ -518,4 +468,74 @@ impl<'a> StackSim<'a> {
 pub struct Local<'a> {
     name: Token<'a>,
     depth: isize,
+}
+
+pub struct ErrorHandler {
+    pub panic_mode: bool,
+    pub had_error: bool,
+}
+
+impl ErrorHandler {
+    fn error_at_previous(&mut self, cursor: &TokenCursor, message: &str) {
+        self.error_at(&cursor.pre, message);
+    }
+
+    fn error_at_current(&mut self, cursor: &TokenCursor, message: &str) {
+        self.error_at(&cursor.cur, message);
+    }
+
+    fn error_at(&mut self, token: &Token, message: &str) {
+        if self.panic_mode {
+            return;
+        }
+
+        eprint!("[line {}] Error ", token.line);
+
+        if token.kind == TokenType::Error {
+            eprint!("while Scanning");
+        } else {
+            eprint!("at {}", token.description);
+        }
+
+        eprint!(": {}\n", message);
+        self.had_error = true;
+        self.panic_mode = true;
+    }
+}
+
+pub struct Chunks {
+    chunk: Chunk
+}
+
+impl Chunks {
+    fn new() -> Self {
+        Self {chunk: Chunk::new()}
+    }
+
+    fn current_chunk(&mut self) -> &mut Chunk {
+        &mut self.chunk
+    }
+
+    fn emit_instruction(&mut self, instr: Instruction, token: &Token) {
+        let line = token.line;
+        self.current_chunk().add_instruction(instr, line);
+    }
+
+    fn emit_value(&mut self, value: Value) -> ConstantIndex {
+        self.current_chunk().add_value(value)
+    }
+}
+
+struct TokenCursor<'a> {
+    cur: Token<'a>,
+    pre: Token<'a>,
+}
+
+impl TokenCursor<'_> {
+    fn new() -> Self {
+        Self {
+            cur: Token::placeholder(),
+            pre: Token::placeholder(),
+        }
+    }
 }

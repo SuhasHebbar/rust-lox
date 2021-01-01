@@ -34,7 +34,7 @@ impl Interpreter {
         let chunk = compiler.chunk;
         let heap = compiler.heap;
 
-        if compiler.had_error {
+        if compiler.errh.had_error {
             None
         } else {
             Some(VmInit { chunk, heap })
