@@ -91,18 +91,22 @@ impl From<Gc<LoxStr>> for Value {
     }
 }
 
-pub struct ChunkIterator<'a>(&'a [u8]);
+pub struct ChunkIterator<'a>(usize, &'a [u8]);
 
 impl Iterator for ChunkIterator<'_> {
-    type Item = Instruction;
+    type Item = (usize, Instruction);
     fn next(&mut self) -> Option<Self::Item> {
-        if self.0.is_empty() {
+        if self.1.is_empty() {
             None
         } else {
-            let (instr, tmp) = Instruction::decode(self.0);
-            self.0 = tmp;
+            let curr_instr_index = self.0;
+            let prev_ptr = self.1.as_ptr() as usize;
+            let (instr, tmp) = Instruction::decode(self.1);
+            self.1 = tmp;
+            let delta = self.1.as_ptr() as usize - prev_ptr;
+            self.0 += delta;
 
-            Some(instr)
+            Some((curr_instr_index, instr))
         }
     }
 }
@@ -145,8 +149,10 @@ impl Chunk {
     // TODO: Add method to add multiple instructions. Maybe reserve space in vector in advance.
 
     pub fn add_instruction(&mut self, instr: Instruction, line: usize) {
-        self.lines.push(line);
         instr.encode(&mut self.code);
+
+        // Add line number to each new byte added via instr.encode.
+        self.lines.resize(self.code.len(), line);
     }
 
     pub fn add_value(&mut self, value: Value) -> u8 {
@@ -159,11 +165,11 @@ impl Chunk {
     }
 
     pub fn instr_iter(&self) -> ChunkIterator {
-        ChunkIterator(&self.code[..])
+        ChunkIterator(0, &self.code[..])
     }
 
     pub fn instr_iter_jump(&self, jump_loc: usize) -> ChunkIterator {
-        ChunkIterator(&self.code[jump_loc..])
+        ChunkIterator(jump_loc, &self.code[jump_loc..])
     }
 
     pub fn disassemble_instruction(&self, index: usize, instr: &Instruction) -> String {
@@ -194,7 +200,7 @@ impl Chunk {
 impl fmt::Display for Chunk {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut instrs = "".to_owned();
-        let mut chunk_iter = self.instr_iter().enumerate();
+        let mut chunk_iter = self.instr_iter();
         while let Some((index, instruction)) = chunk_iter.next() {
             let opcode_view = self.disassemble_instruction(index, &instruction);
             instrs.push_str(&opcode_view);

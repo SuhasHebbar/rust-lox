@@ -19,7 +19,7 @@ const STACK_MIN_SIZE: usize = 256;
 pub type StackIndex = u8;
 
 type Stack = Vec<Value>;
-type Curr = Peekable<Enumerate<ChunkIterator<'static>>>;
+type Curr = Peekable<ChunkIterator<'static>>;
 
 pub struct Vm {
     heap: Heap,
@@ -265,5 +265,5 @@ fn check_equals(lhs: &Value, rhs: &Value) -> bool {
 }
 
 fn get_cursor(chunk_iter: ChunkIterator) -> Curr {
-    unsafe { mem::transmute(chunk_iter.enumerate().peekable()) }
+    unsafe { mem::transmute(chunk_iter.peekable()) }
 }
