@@ -36,7 +36,7 @@ impl Vm {
         // https://stackoverflow.com/questions/32300132/why-cant-i-store-a-value-and-a-reference-to-that-value-in-the-same-struct
         // This should be safe since we will not move Chunk away while using instr_iter.
         let VmInit { chunk, heap } = vm_init;
-        let instr_iter = unsafe { mem::transmute(chunk.instr_iter().enumerate().peekable()) };
+        let instr_iter = get_cursor(chunk.instr_iter());
         Vm {
             heap,
             chunk,
@@ -149,8 +149,16 @@ impl Vm {
                 }
                 Instruction::SetLocal(var_index) => {
                     let var_index = *var_index;
-                    
+
                     self.stack[var_index as usize] = *self.peek(0);
+                }
+                Instruction::JumpIfFalse(jump_index) => {
+                    let jump_index = *jump_index;
+                    let stack_val = self.peek(0);
+                    if is_falsey(stack_val) {
+                        self.instr_iter =
+                            get_cursor(self.chunk.instr_iter_jump(jump_index as usize));
+                    }
                 }
             };
             self.instr_iter.next();
@@ -254,4 +262,8 @@ fn check_equals(lhs: &Value, rhs: &Value) -> bool {
         (Value::String(lhs), Value::String(rhs)) => **lhs == **rhs,
         _ => panic!("unreachable"),
     }
+}
+
+fn get_cursor(chunk_iter: ChunkIterator) -> Curr {
+    unsafe { mem::transmute(chunk_iter.enumerate().peekable()) }
 }

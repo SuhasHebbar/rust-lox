@@ -1,3 +1,5 @@
+use std::mem;
+
 use crate::{
     compiler::Compiler,
     heap::Heap,
@@ -31,7 +33,7 @@ impl Interpreter {
     fn compile(&mut self, source: &str) -> Option<VmInit> {
         let mut compiler = Compiler::new(source);
         let compiler_res = compiler.compile();
-        let chunk = compiler.chunk;
+        let chunk = mem::replace(compiler.chunks.current_chunk(), Chunk::new());
         let heap = compiler.heap;
 
         if compiler.errh.had_error {

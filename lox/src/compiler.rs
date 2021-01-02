@@ -1,4 +1,11 @@
-use crate::{heap::{Heap}, opcodes::{ChunkIterator, ConstantIndex, Number}, precedence::{parse_rule, ParseRule, Precedence}, vm::StackIndex};
+use std::convert::TryInto;
+
+use crate::{
+    heap::Heap,
+    opcodes::{ByteCodeIndex, ChunkIterator, ConstantIndex, Number},
+    precedence::{parse_rule, ParseRule, Precedence},
+    vm::StackIndex,
+};
 
 use crate::{
     opcodes::Chunk,
@@ -17,7 +24,7 @@ pub struct Compiler<'a> {
     pub chunks: Chunks,
     pub heap: Heap,
     pub state: StackSim<'a>,
-    pub errh: ErrorHandler
+    pub errh: ErrorHandler,
 }
 
 impl<'a> Compiler<'a> {
@@ -30,7 +37,10 @@ impl<'a> Compiler<'a> {
             chunks: Chunks::new(),
             heap: Heap::new(),
             state: StackSim::new(),
-            errh: ErrorHandler {had_error: false, panic_mode: false}
+            errh: ErrorHandler {
+                had_error: false,
+                panic_mode: false,
+            },
         }
     }
 
@@ -119,7 +129,12 @@ impl<'a> Compiler<'a> {
         self.emit_instruction(Instruction::Return);
     }
 
-    fn make_constant(chunks: &mut Chunks, value: Value, errh: &mut ErrorHandler, cursor: &TokenCursor) -> ConstantIndex {
+    fn make_constant(
+        chunks: &mut Chunks,
+        value: Value,
+        errh: &mut ErrorHandler,
+        cursor: &TokenCursor,
+    ) -> ConstantIndex {
         let constant_index = chunks.emit_value(value);
         if constant_index > u8::MAX {
             errh.error_at_previous(cursor, "Too many constants in one chunk.");
@@ -130,7 +145,8 @@ impl<'a> Compiler<'a> {
     }
 
     fn emit_constant(&mut self, value: Value) {
-        let constant_index = Self::make_constant(&mut self.chunks, value, &mut self.errh, &self.tin);
+        let constant_index =
+            Self::make_constant(&mut self.chunks, value, &mut self.errh, &self.tin);
         self.emit_instruction(Instruction::Constant(constant_index));
     }
 
@@ -255,7 +271,6 @@ impl<'a> Compiler<'a> {
         for (i, local) in self.state.locals.iter().enumerate().rev() {
             if local.name.description == self.tin.pre.description {
                 if local.depth == -1 {
-
                     self.error_at_previous("Can't read local variable in its own initializer.");
                 }
 
@@ -325,7 +340,10 @@ impl<'a> Compiler<'a> {
             }
 
             if local.name.description == self.tin.pre.description {
-                self.errh.error_at(&self.tin.pre, "Already variable with this name in this scope.");
+                self.errh.error_at(
+                    &self.tin.pre,
+                    "Already variable with this name in this scope.",
+                );
             }
         }
 
@@ -334,12 +352,19 @@ impl<'a> Compiler<'a> {
 
     fn make_identifier(&mut self) -> ConstantIndex {
         let lox_str = self.heap.intern_string(self.tin.pre.description);
-        Self::make_constant(&mut self.chunks, Value::String(lox_str), &mut self.errh, &self.tin)
+        Self::make_constant(
+            &mut self.chunks,
+            Value::String(lox_str),
+            &mut self.errh,
+            &self.tin,
+        )
     }
 
     pub fn statement(&mut self) {
         if self.match_tt(TokenType::Print) {
             self.print_statement();
+        } else if self.match_tt(TokenType::If) {
+            self.if_statement();
         } else if self.match_tt(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
@@ -349,6 +374,43 @@ impl<'a> Compiler<'a> {
             self.consume(TokenType::SemiColon, "Expect ';' after value.");
             self.emit_instruction(Instruction::Pop);
         }
+    }
+
+    pub fn if_statement(&mut self) {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+
+        let patch_loc = self.emit_jump(Instruction::jump_if_false_placeholder());
+
+        self.statement();
+
+        self.patch_jump(patch_loc)
+    }
+
+    fn patch_jump(&mut self, patch_loc: usize) {
+        let patch: Result<ByteCodeIndex, _> = self
+            .chunks
+            .current_chunk()
+            .next_byte_index()
+            .try_into();
+
+        if let Ok(patch) = patch {
+            self.chunks
+                .current_chunk()
+                .patch_bytecode_index(patch_loc, patch as ByteCodeIndex);
+        } else {
+            self.errh.error_at_previous(&self.tin, "Too much code to jump over.");
+
+        }
+
+    }
+
+    fn emit_jump(&mut self, instr: Instruction) -> usize {
+        let patch_index = self.chunks.current_chunk().next_byte_index() + 1;
+        self.emit_instruction(Instruction::jump_if_false_placeholder());
+
+        patch_index
     }
 
     fn begin_scope(&mut self) {
@@ -504,15 +566,17 @@ impl ErrorHandler {
 }
 
 pub struct Chunks {
-    chunk: Chunk
+    chunk: Chunk,
 }
 
 impl Chunks {
     fn new() -> Self {
-        Self {chunk: Chunk::new()}
+        Self {
+            chunk: Chunk::new(),
+        }
     }
 
-    fn current_chunk(&mut self) -> &mut Chunk {
+    pub fn current_chunk(&mut self) -> &mut Chunk {
         &mut self.chunk
     }
 

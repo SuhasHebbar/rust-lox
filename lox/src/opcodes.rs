@@ -8,6 +8,7 @@ use std::{
 
 pub type Number = f64;
 pub type ConstantIndex = u8;
+pub type ByteCodeIndex = u16;
 
 trait ByteCodeEncodeDecode: Sized {
     fn encode(&self, dest: &mut Vec<u8>);
@@ -48,6 +49,14 @@ pub enum Instruction {
 
     GetLocal(ConstantIndex),
     SetLocal(ConstantIndex),
+
+    JumpIfFalse(ByteCodeIndex),
+}
+
+impl Instruction {
+    pub fn jump_if_false_placeholder() -> Self {
+        Instruction::JumpIfFalse(!0)
+    }
 }
 
 pub struct Chunk {
@@ -124,6 +133,15 @@ impl Chunk {
         }
     }
 
+    pub fn next_byte_index(&self) -> usize {
+        self.code.len()
+    }
+
+    pub fn patch_bytecode_index(&mut self, loc: usize, value: ByteCodeIndex) {
+        self.code[loc..loc + 2].copy_from_slice(&value.to_ne_bytes()[..]);
+
+    }
+
     // TODO: Add method to add multiple instructions. Maybe reserve space in vector in advance.
 
     pub fn add_instruction(&mut self, instr: Instruction, line: usize) {
@@ -142,6 +160,10 @@ impl Chunk {
 
     pub fn instr_iter(&self) -> ChunkIterator {
         ChunkIterator(&self.code[..])
+    }
+
+    pub fn instr_iter_jump(&self, jump_loc: usize) -> ChunkIterator {
+        ChunkIterator(&self.code[jump_loc..])
     }
 
     pub fn disassemble_instruction(&self, index: usize, instr: &Instruction) -> String {
@@ -193,6 +215,15 @@ impl Decode for u32 {
         *slice_ptr = tmp;
         let val: [u8; 4] = val.try_into().expect("slice of incorrect length.");
         return u32::from_ne_bytes(val);
+    }
+}
+
+impl Decode for u16 {
+    fn decode(slice_ptr: &mut &[u8]) -> Self {
+        let (val, tmp) = slice_ptr.split_at(2);
+        *slice_ptr = tmp;
+        let val: [u8; 2] = val.try_into().expect("slice of incorrect length.");
+        return u16::from_ne_bytes(val);
     }
 }
 
