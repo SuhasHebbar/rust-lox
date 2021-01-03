@@ -2,7 +2,7 @@ use std::convert::TryInto;
 
 use crate::{
     heap::Heap,
-    opcodes::{ByteCodeIndex, ChunkIterator, ConstantIndex, Number},
+    opcodes::{ByteCodeOffset, ChunkIterator, ConstantIndex, Number},
     precedence::{parse_rule, ParseRule, Precedence},
     vm::StackIndex,
 };
@@ -147,7 +147,7 @@ impl<'a> Compiler<'a> {
     fn emit_constant(&mut self, value: Value) {
         let constant_index =
             Self::make_constant(&mut self.chunks, value, &mut self.errh, &self.tin);
-        self.emit_instruction(Instruction::Constant(constant_index));
+        self.emit_instruction(Instruction::LoadConstant(constant_index));
     }
 
     fn synchronize(&mut self) {
@@ -248,18 +248,18 @@ impl<'a> Compiler<'a> {
         self.emit_instruction(Instruction::Pop);
         self.parse_precedence(Precedence::And);
 
-        self.patch_jump(patch_loc);
+        self.patch_fwd_jump(patch_loc);
     }
 
     pub fn or(&mut self) {
         let jmpif_patch_loc = self.emit_jump(Instruction::jump_if_false_placeholder());
         let jmp_patch_loc = self.emit_jump(Instruction::jump_placeholder());
 
-        self.patch_jump(jmpif_patch_loc);
+        self.patch_fwd_jump(jmpif_patch_loc);
         self.emit_instruction(Instruction::Pop);
-        
+
         self.parse_precedence(Precedence::Or);
-        self.patch_jump(jmp_patch_loc);
+        self.patch_fwd_jump(jmp_patch_loc);
     }
 
     pub fn variable(&mut self, assign: bool) {
@@ -384,6 +384,8 @@ impl<'a> Compiler<'a> {
             self.print_statement();
         } else if self.match_tt(TokenType::If) {
             self.if_statement();
+        } else if self.match_tt(TokenType::While) {
+            self.while_statement();
         } else if self.match_tt(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
@@ -392,6 +394,32 @@ impl<'a> Compiler<'a> {
             self.expression_statement();
             self.consume(TokenType::SemiColon, "Expect ';' after value.");
             self.emit_instruction(Instruction::Pop);
+        }
+    }
+
+    pub fn while_statement(&mut self) {
+        let loop_jump = self.chunks.current_chunk().next_byte_index();
+        self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+
+        let exit_jump = self.emit_jump(Instruction::jump_if_false_placeholder());
+        self.emit_instruction(Instruction::Pop);
+
+        self.statement();
+        self.emit_back_jump(loop_jump);
+        self.patch_fwd_jump(exit_jump);
+        self.emit_instruction(Instruction::Pop);
+    }
+
+    fn emit_back_jump(&mut self, jump_index: usize) {
+        let offset: Result<ByteCodeOffset, _> = (self.chunks.current_chunk().next_byte_index() - jump_index).try_into();
+
+        if let Ok(offset) = offset {
+            self.emit_instruction(Instruction::JumpBack(offset));
+        } else {
+            self.errh.error_at_previous(&self.tin, "Loop body too large.");
+            // self.emit_instruction(Instruction::JumpBack(0));
         }
     }
 
@@ -408,7 +436,7 @@ impl<'a> Compiler<'a> {
         // Jump to avoid potential else block bytecode coming up next.
         let else_patch_loc = self.emit_jump(Instruction::jump_placeholder());
 
-        self.patch_jump(patch_loc);
+        self.patch_fwd_jump(patch_loc);
 
         if self.match_tt(TokenType::Else) {
             // Pop if condition expression from stack.
@@ -417,30 +445,27 @@ impl<'a> Compiler<'a> {
 
             self.statement();
         }
-        self.patch_jump(else_patch_loc);
-
+        self.patch_fwd_jump(else_patch_loc);
     }
 
-    fn patch_jump(&mut self, patch_loc: usize) {
-        let patch: Result<ByteCodeIndex, _> = self
-            .chunks
-            .current_chunk()
-            .next_byte_index()
-            .try_into();
+    fn patch_fwd_jump(&mut self, patch_loc: usize) {
+        let patch: Result<ByteCodeOffset, _> =
+            (self.chunks.current_chunk().next_byte_index() - patch_loc).try_into();
 
         if let Ok(patch) = patch {
             self.chunks
                 .current_chunk()
-                .patch_bytecode_index(patch_loc, patch as ByteCodeIndex);
+                // + 1 ensures that the ByteCodeIndex is written into the jump offset
+                // not overrwriting in Instr Opcode
+                .patch_bytecode_index(patch_loc + 1, patch as ByteCodeOffset);
         } else {
-            self.errh.error_at_previous(&self.tin, "Too much code to jump over.");
-
+            self.errh
+                .error_at_previous(&self.tin, "Too much code to jump over.");
         }
-
     }
 
     fn emit_jump(&mut self, instr: Instruction) -> usize {
-        let patch_index = self.chunks.current_chunk().next_byte_index() + 1;
+        let patch_index = self.chunks.current_chunk().next_byte_index();
         self.emit_instruction(instr);
 
         patch_index

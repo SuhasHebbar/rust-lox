@@ -61,12 +61,14 @@ impl Vm {
         #[cfg(feature = "lox_debug")]
         {
             println!("{}", self.chunk);
+            // println!("Starting Execution");
         }
-        
-        while let Some((_index, instr)) = self.instr_iter.peek() {
+
+
+        while let Some((index, instr)) = self.instr_iter.peek() {
             #[cfg(feature = "lox_debug")]
             {
-                // println!("{}", self.chunk.disassemble_instruction(*_index, &instr));
+                // println!("{}", self.chunk.disassemble_instruction(*index, &instr));
             }
 
             match instr {
@@ -75,7 +77,7 @@ impl Vm {
                     // return InterpreterResult::Ok;
                     break;
                 }
-                Instruction::Constant(cin) => {
+                Instruction::LoadConstant(cin) => {
                     let constant = self.chunk.get_value(*cin);
                     self.stack.push(constant.clone());
                 }
@@ -159,17 +161,24 @@ impl Vm {
 
                     self.stack[var_index as usize] = *self.peek(0);
                 }
-                Instruction::JumpIfFalse(jump_index) => {
-                    let jump_index = *jump_index;
+                Instruction::JumpFwdIfFalse(offset) => {
+                    let jump_index = index + *offset as usize;
                     let stack_val = self.peek(0);
                     if is_falsey(stack_val) {
                         self.instr_iter =
-                            get_cursor(self.chunk.instr_iter_jump(jump_index as usize));
+                            get_cursor(self.chunk.instr_iter_jump(jump_index));
+                        continue;
                     }
                 }
-                Instruction::Jump(jump_index) => {
-                    let jump_index = *jump_index;
-                    self.instr_iter = get_cursor(self.chunk.instr_iter_jump(jump_index as usize));
+                Instruction::JumpForward(offset) => {
+                    let jump_index = index + *offset as usize;
+                    self.instr_iter = get_cursor(self.chunk.instr_iter_jump(jump_index));
+                    continue;
+                }
+                Instruction::JumpBack(offset) => {
+                    let jump_index = index - *offset as usize;
+                    self.instr_iter = get_cursor(self.chunk.instr_iter_jump(jump_index));
+                    continue;
                 }
             };
             self.instr_iter.next();
@@ -235,8 +244,8 @@ impl Vm {
         for<'a> T: TryFrom<&'a Value>,
         T: Copy,
     {
-        let rhs = self.peek(1).try_into();
-        let lhs = self.peek(0).try_into();
+        let lhs = self.peek(1).try_into();
+        let rhs = self.peek(0).try_into();
 
         let temp = (lhs, rhs);
         match &temp {

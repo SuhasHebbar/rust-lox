@@ -38,6 +38,6 @@ mod test {
 
     #[test]
     fn main_test() {
-        run_file("main_test.lox");
+        run_file("test.lox");
     }
 }

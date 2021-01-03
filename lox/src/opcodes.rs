@@ -8,7 +8,7 @@ use std::{
 
 pub type Number = f64;
 pub type ConstantIndex = u8;
-pub type ByteCodeIndex = u16;
+pub type ByteCodeOffset = u16;
 
 trait ByteCodeEncodeDecode: Sized {
     fn encode(&self, dest: &mut Vec<u8>);
@@ -21,7 +21,7 @@ use crate::heap::{Gc, LoxStr};
 #[derive(Debug, ByteCodeEncodeDecode)]
 pub enum Instruction {
     Return,
-    Constant(ConstantIndex),
+    LoadConstant(ConstantIndex),
 
     Negate,
     Not,
@@ -50,17 +50,18 @@ pub enum Instruction {
     GetLocal(ConstantIndex),
     SetLocal(ConstantIndex),
 
-    JumpIfFalse(ByteCodeIndex),
-    Jump(ByteCodeIndex),
+    JumpFwdIfFalse(ByteCodeOffset),
+    JumpForward(ByteCodeOffset),
+    JumpBack(ByteCodeOffset)
 }
 
 impl Instruction {
     pub fn jump_if_false_placeholder() -> Self {
-        Instruction::JumpIfFalse(!0)
+        Instruction::JumpFwdIfFalse(!0)
     }
 
     pub fn jump_placeholder() -> Self {
-        Instruction::Jump(!0)
+        Instruction::JumpForward(!0)
     }
 }
 
@@ -146,7 +147,7 @@ impl Chunk {
         self.code.len()
     }
 
-    pub fn patch_bytecode_index(&mut self, loc: usize, value: ByteCodeIndex) {
+    pub fn patch_bytecode_index(&mut self, loc: usize, value: ByteCodeOffset) {
         self.code[loc..loc + 2].copy_from_slice(&value.to_ne_bytes()[..]);
 
     }
@@ -190,9 +191,7 @@ impl Chunk {
             | Instruction::SetGlobal(var_index)
             | Instruction::GetLocal(var_index)
             | Instruction::SetLocal(var_index)
-            | Instruction::Constant(var_index) => format!("{{value = {}}}", self.get_value(*var_index)),
-            Instruction::JumpIfFalse(jmp_index)
-            | Instruction::Jump(jmp_index) => format!("{{line = {}, instruction = {}}}" ,self.get_line(*jmp_index as usize), *jmp_index),
+            | Instruction::LoadConstant(var_index) => format!("{{value = {}}}", self.get_value(*var_index)),
             _ => "".to_owned(),
         };
 
