@@ -68,61 +68,61 @@ const PLACEHOLDER_PARSERULE: ParseRule = ParseRule {
 };
 
 const LEFT_PAREN_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler, assign: bool| this.grouping()),
+    prefix: Some(&|this: &mut Compiler, _assign: bool| this.grouping()),
     infix: None,
     curr_prec: Precedence::None,
 };
 
 const MINUS_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler, assign: bool| this.unary()),
-    infix: Some(&|this: &mut Compiler, assign: bool| this.binary()),
+    prefix: Some(&|this: &mut Compiler, _assign: bool| this.unary()),
+    infix: Some(&|this: &mut Compiler, _assign: bool| this.binary()),
     curr_prec: Precedence::Term,
 };
 
 const PLUS_RULE: ParseRule = ParseRule {
     prefix: None,
-    infix: Some(&|this: &mut Compiler, assign: bool| this.binary()),
+    infix: Some(&|this: &mut Compiler, _assign: bool| this.binary()),
     curr_prec: Precedence::Term,
 };
 
 const SLASH_AND_STAR_RULE: ParseRule = ParseRule {
     prefix: None,
-    infix: Some(&|this: &mut Compiler, assign: bool| this.binary()),
+    infix: Some(&|this: &mut Compiler, _assign: bool| this.binary()),
     curr_prec: Precedence::Factor,
 };
 
 const NUMBER_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler, assign: bool| this.number()),
+    prefix: Some(&|this: &mut Compiler, _assign: bool| this.number()),
     infix: None,
     curr_prec: Precedence::None,
 };
 
 const LITERAL_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler, assign: bool| this.literal()),
+    prefix: Some(&|this: &mut Compiler, _assign: bool| this.literal()),
     infix: None,
     curr_prec: Precedence::None,
 };
 
 const BANG_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler, assign: bool| this.unary()),
+    prefix: Some(&|this: &mut Compiler, _assign: bool| this.unary()),
     infix: None,
     curr_prec: Precedence::None,
 };
 
 const EQUALITY_RULE: ParseRule = ParseRule {
     prefix: None,
-    infix: Some(&|this: &mut Compiler, assign: bool| this.binary()),
+    infix: Some(&|this: &mut Compiler, _assign: bool| this.binary()),
     curr_prec: Precedence::Equality,
 };
 
 const COMPARISON_RULE: ParseRule = ParseRule {
     prefix: None,
-    infix: Some(&|this: &mut Compiler, assign: bool| this.binary()),
+    infix: Some(&|this: &mut Compiler, _assign: bool| this.binary()),
     curr_prec: Precedence::Comparison,
 };
 
 const STRING_RULE: ParseRule = ParseRule {
-    prefix: Some(&|this: &mut Compiler, assign: bool| this.string()),
+    prefix: Some(&|this: &mut Compiler, _assign: bool| this.string()),
     infix: None,
     curr_prec: Precedence::None,
 };
@@ -133,6 +133,17 @@ const VARIABLE_RULE: ParseRule = ParseRule {
     curr_prec: Precedence::None,
 };
 
+const AND_RULE: ParseRule = ParseRule {
+    prefix: None,
+    infix: Some(&|this: &mut Compiler, _assign: bool| this.and()),
+    curr_prec: Precedence::Comparison,
+};
+
+const OR_RULE: ParseRule = ParseRule {
+    prefix: None,
+    infix: Some(&|this: &mut Compiler, _assign: bool| this.or()),
+    curr_prec: Precedence::Comparison,
+};
 
 pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
     match token_type {
@@ -149,6 +160,8 @@ pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
         }
         TokenType::String => &STRING_RULE,
         TokenType::Identifier => &VARIABLE_RULE,
+        TokenType::And => &AND_RULE,
+        TokenType::Or => &OR_RULE,
         _ => &PLACEHOLDER_PARSERULE,
     }
 }

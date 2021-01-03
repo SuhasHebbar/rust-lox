@@ -64,7 +64,7 @@ impl<'a> Compiler<'a> {
         {
             if self.errh.had_error {
                 eprintln!("Dumping bytecode to console");
-                eprintln!("{}", self.chunk);
+                eprintln!("{}", self.chunks.current_chunk());
             }
         }
     }
@@ -243,6 +243,25 @@ impl<'a> Compiler<'a> {
         self.emit_constant(Value::String(string_ref));
     }
 
+    pub fn and(&mut self) {
+        let patch_loc = self.emit_jump(Instruction::jump_if_false_placeholder());
+        self.emit_instruction(Instruction::Pop);
+        self.parse_precedence(Precedence::And);
+
+        self.patch_jump(patch_loc);
+    }
+
+    pub fn or(&mut self) {
+        let jmpif_patch_loc = self.emit_jump(Instruction::jump_if_false_placeholder());
+        let jmp_patch_loc = self.emit_jump(Instruction::jump_placeholder());
+
+        self.patch_jump(jmpif_patch_loc);
+        self.emit_instruction(Instruction::Pop);
+        
+        self.parse_precedence(Precedence::Or);
+        self.patch_jump(jmp_patch_loc);
+    }
+
     pub fn variable(&mut self, assign: bool) {
         let arg = self.resolve_local();
 
@@ -383,9 +402,23 @@ impl<'a> Compiler<'a> {
 
         let patch_loc = self.emit_jump(Instruction::jump_if_false_placeholder());
 
+        // Pop if condition expression from stack.
+        self.emit_instruction(Instruction::Pop);
         self.statement();
+        // Jump to avoid potential else block bytecode coming up next.
+        let else_patch_loc = self.emit_jump(Instruction::jump_placeholder());
 
-        self.patch_jump(patch_loc)
+        self.patch_jump(patch_loc);
+
+        if self.match_tt(TokenType::Else) {
+            // Pop if condition expression from stack.
+            // The previously written pop op in this function won't work since it's in the if then block.
+            self.emit_instruction(Instruction::Pop);
+
+            self.statement();
+        }
+        self.patch_jump(else_patch_loc);
+
     }
 
     fn patch_jump(&mut self, patch_loc: usize) {
@@ -408,7 +441,7 @@ impl<'a> Compiler<'a> {
 
     fn emit_jump(&mut self, instr: Instruction) -> usize {
         let patch_index = self.chunks.current_chunk().next_byte_index() + 1;
-        self.emit_instruction(Instruction::jump_if_false_placeholder());
+        self.emit_instruction(instr);
 
         patch_index
     }

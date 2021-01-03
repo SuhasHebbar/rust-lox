@@ -51,11 +51,16 @@ pub enum Instruction {
     SetLocal(ConstantIndex),
 
     JumpIfFalse(ByteCodeIndex),
+    Jump(ByteCodeIndex),
 }
 
 impl Instruction {
     pub fn jump_if_false_placeholder() -> Self {
         Instruction::JumpIfFalse(!0)
+    }
+
+    pub fn jump_placeholder() -> Self {
+        Instruction::Jump(!0)
     }
 }
 
@@ -180,16 +185,18 @@ impl Chunk {
         };
 
         let extension = match instr {
-            Instruction::Constant(var_index)
-            | Instruction::DefineGlobal(var_index)
+            Instruction::DefineGlobal(var_index)
+            | Instruction::GetGlobal(var_index)
             | Instruction::SetGlobal(var_index)
             | Instruction::GetLocal(var_index)
             | Instruction::SetLocal(var_index)
-            | Instruction::GetGlobal(var_index) => self.get_value(*var_index).to_string(),
+            | Instruction::Constant(var_index) => format!("{{value = {}}}", self.get_value(*var_index)),
+            Instruction::JumpIfFalse(jmp_index)
+            | Instruction::Jump(jmp_index) => format!("{{line = {}, instruction = {}}}" ,self.get_line(*jmp_index as usize), *jmp_index),
             _ => "".to_owned(),
         };
 
-        return format!("{:0>4} {: >4} {} {}", index, line_str, instr, extension);
+        return format!("{:0>4} {: >4} {: <30} {}", index, line_str, instr.to_string(), extension);
     }
 
     pub fn get_line(&self, instr_index: usize) -> usize {

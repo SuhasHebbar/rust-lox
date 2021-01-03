@@ -57,16 +57,23 @@ impl Vm {
     }
 
     pub fn run(&mut self) -> InterpreterResult {
+        
+        #[cfg(feature = "lox_debug")]
+        {
+            println!("{}", self.chunk);
+        }
+        
         while let Some((_index, instr)) = self.instr_iter.peek() {
             #[cfg(feature = "lox_debug")]
             {
-                println!("{}", self.chunk.disassemble_instruction(*_index, &instr));
+                // println!("{}", self.chunk.disassemble_instruction(*_index, &instr));
             }
 
             match instr {
                 Instruction::Return => {
                     // println!("return {}", self.stack.pop().unwrap());
-                    return InterpreterResult::Ok;
+                    // return InterpreterResult::Ok;
+                    break;
                 }
                 Instruction::Constant(cin) => {
                     let constant = self.chunk.get_value(*cin);
@@ -160,6 +167,10 @@ impl Vm {
                             get_cursor(self.chunk.instr_iter_jump(jump_index as usize));
                     }
                 }
+                Instruction::Jump(jump_index) => {
+                    let jump_index = *jump_index;
+                    self.instr_iter = get_cursor(self.chunk.instr_iter_jump(jump_index as usize));
+                }
             };
             self.instr_iter.next();
 
@@ -167,6 +178,7 @@ impl Vm {
                 return InterpreterResult::RuntimeError;
             }
         }
+
 
         return InterpreterResult::Ok;
     }
