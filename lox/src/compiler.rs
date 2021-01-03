@@ -124,6 +124,10 @@ impl<'a> Compiler<'a> {
     fn emit_instruction(&mut self, instr: Instruction) {
         self.chunks.emit_instruction(instr, &self.tin.pre)
     }
+    
+    fn emit_pop(&mut self) {
+        self.emit_instruction(Instruction::Pop);
+    }
 
     fn emit_return(&mut self) {
         self.emit_instruction(Instruction::Return);
@@ -245,7 +249,7 @@ impl<'a> Compiler<'a> {
 
     pub fn and(&mut self) {
         let patch_loc = self.emit_jump(Instruction::jump_if_false_placeholder());
-        self.emit_instruction(Instruction::Pop);
+        self.emit_pop();
         self.parse_precedence(Precedence::And);
 
         self.patch_fwd_jump(patch_loc);
@@ -256,7 +260,7 @@ impl<'a> Compiler<'a> {
         let jmp_patch_loc = self.emit_jump(Instruction::jump_placeholder());
 
         self.patch_fwd_jump(jmpif_patch_loc);
-        self.emit_instruction(Instruction::Pop);
+        self.emit_pop();
 
         self.parse_precedence(Precedence::Or);
         self.patch_fwd_jump(jmp_patch_loc);
@@ -386,6 +390,8 @@ impl<'a> Compiler<'a> {
             self.if_statement();
         } else if self.match_tt(TokenType::While) {
             self.while_statement();
+        } else if self.match_tt(TokenType::For) {
+            self.for_statement();
         } else if self.match_tt(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
@@ -393,8 +399,58 @@ impl<'a> Compiler<'a> {
         } else {
             self.expression_statement();
             self.consume(TokenType::SemiColon, "Expect ';' after value.");
-            self.emit_instruction(Instruction::Pop);
+            self.emit_pop();
         }
+    }
+
+    fn for_statement(&mut self) {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'for'.");
+        self.begin_scope();
+
+        if self.match_tt(TokenType::SemiColon) {
+            // no initializer
+        } else if self.match_tt(TokenType::Var) {
+            self.var_declaration();
+        } else {
+            self.expression_statement();
+        }
+
+        let exit_jump;
+
+        let condition_start = self.chunks.current_chunk().next_byte_index();
+        let mut post_body = condition_start;
+        if self.match_tt(TokenType::SemiColon) {
+            exit_jump = None;
+        } else {
+            self.expression();
+            self.consume(TokenType::SemiColon, "Expect ';' after loop condition.");
+
+            exit_jump = Some(self.emit_jump(Instruction::jump_if_false_placeholder()));
+            self.emit_pop();
+        }
+        let body_start_patch_loc = self.emit_jump(Instruction::jump_placeholder());
+
+        if !self.match_tt(TokenType::RightParen) {
+            post_body = self.chunks.current_chunk().next_byte_index();
+
+            self.expression();
+            self.emit_pop();
+
+            self.consume(TokenType::RightParen, "Expect ')' after for clauses.");
+            self.emit_back_jump(condition_start);
+        }
+
+        self.patch_fwd_jump(body_start_patch_loc);
+        self.statement();
+
+        self.emit_back_jump(post_body);
+
+        if let Some(exit_jump) = exit_jump {
+            self.patch_fwd_jump(exit_jump);
+            self.emit_pop();
+        }
+
+        self.end_scope();
     }
 
     pub fn while_statement(&mut self) {
@@ -404,12 +460,12 @@ impl<'a> Compiler<'a> {
         self.consume(TokenType::RightParen, "Expect ')' after condition.");
 
         let exit_jump = self.emit_jump(Instruction::jump_if_false_placeholder());
-        self.emit_instruction(Instruction::Pop);
+        self.emit_pop();
 
         self.statement();
         self.emit_back_jump(loop_jump);
         self.patch_fwd_jump(exit_jump);
-        self.emit_instruction(Instruction::Pop);
+        self.emit_pop();
     }
 
     fn emit_back_jump(&mut self, jump_index: usize) {
@@ -431,7 +487,7 @@ impl<'a> Compiler<'a> {
         let patch_loc = self.emit_jump(Instruction::jump_if_false_placeholder());
 
         // Pop if condition expression from stack.
-        self.emit_instruction(Instruction::Pop);
+        self.emit_pop();
         self.statement();
         // Jump to avoid potential else block bytecode coming up next.
         let else_patch_loc = self.emit_jump(Instruction::jump_placeholder());
@@ -441,7 +497,7 @@ impl<'a> Compiler<'a> {
         if self.match_tt(TokenType::Else) {
             // Pop if condition expression from stack.
             // The previously written pop op in this function won't work since it's in the if then block.
-            self.emit_instruction(Instruction::Pop);
+            self.emit_pop();
 
             self.statement();
         }
@@ -482,7 +538,7 @@ impl<'a> Compiler<'a> {
             let local = &self.state.locals[i];
             if self.state.scope_depth < local.depth {
                 self.state.locals.pop();
-                self.emit_instruction(Instruction::Pop);
+                self.emit_pop();
             } else {
                 break;
             }
@@ -490,7 +546,7 @@ impl<'a> Compiler<'a> {
         // for local in self.state.locals.iter().rev() {
         //     if self.state.scope_depth < local.depth {
         //         self.state.locals.pop();
-        //         self.emit_instruction(Instruction::Pop);
+        //         self.emit_pop();
         //     }
         // }
     }
