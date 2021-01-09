@@ -7,13 +7,44 @@ use std::convert::TryInto;
 
 use lox_macros::ByteCodeEncodeDecode;
 
-type ConstantIndex = u32;
+type ConstantIndex = u8;
+pub type ByteCodeOffset = u16;
 
-#[derive(ByteCodeEncodeDecode)]
-enum ByteCode {
-    A,
-    B(u32),
-    C(ConstantIndex),
+#[derive(Debug, ByteCodeEncodeDecode)]
+pub enum Instruction {
+    Return,
+    LoadConstant(ConstantIndex),
+
+    Negate,
+    Not,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Equal,
+    Greater,
+    Less,
+
+    // Dedicated literal loads
+    Nil,
+    True,
+    False,
+
+    // Dedicated Print instruction
+    Print,
+
+    Pop,
+
+    DefineGlobal(ConstantIndex),
+    GetGlobal(ConstantIndex),
+    SetGlobal(ConstantIndex),
+
+    GetLocal(ConstantIndex),
+    SetLocal(ConstantIndex),
+
+    JumpFwdIfFalse(ByteCodeOffset),
+    JumpForward(ByteCodeOffset),
+    JumpBack(ByteCodeOffset)
 }
 
 trait Decode {
@@ -29,6 +60,15 @@ impl Decode for u32 {
     }
 }
 
+impl Decode for u16 {
+    fn decode(slice_ptr: &mut &[u8]) -> Self {
+        let (val, tmp) = slice_ptr.split_at(2);
+        *slice_ptr = tmp;
+        let val: [u8; 2] = val.try_into().expect("slice of incorrect length.");
+        return u16::from_ne_bytes(val);
+    }
+}
+
 impl Decode for u8 {
     fn decode(slice_ptr: &mut &[u8]) -> Self {
         let (val, tmp) = slice_ptr.split_at(1);
@@ -37,3 +77,4 @@ impl Decode for u8 {
         return u8::from_ne_bytes(val);
     }
 }
+
