@@ -1,9 +1,8 @@
-use fmt::{Display, Formatter};
+use fmt::{Display, Formatter, Debug};
 use std::{
     convert::{TryFrom, TryInto},
     error::Error,
     fmt,
-    rc::Rc,
 };
 
 pub type Number = f64;
@@ -16,7 +15,7 @@ trait ByteCodeEncodeDecode: Sized {
 }
 use lox_macros::ByteCodeEncodeDecode;
 
-use crate::heap::{Gc, LoxStr};
+use crate::{heap::{Gc, LoxStr}, object::LoxFun};
 
 #[derive(Debug, ByteCodeEncodeDecode)]
 pub enum Instruction {
@@ -65,6 +64,7 @@ impl Instruction {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Chunk {
     code: Vec<u8>,
     lines: Vec<usize>,
@@ -77,6 +77,7 @@ pub enum Value {
     Number(Number),
     Boolean(bool),
     String(Gc<LoxStr>),
+    Function(Gc<LoxFun>)
 }
 
 impl From<Number> for Value {
@@ -124,6 +125,8 @@ impl fmt::Display for Value {
             Value::Number(num) => write!(f, "{}", num),
             Value::Boolean(val) => write!(f, "{}", val),
             Value::String(string) => write!(f, "{}", string),
+            Value::Function(lox_fun) => write!(f, "{}", lox_fun),
+
         }
     }
 }

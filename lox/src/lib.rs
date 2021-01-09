@@ -6,3 +6,4 @@ mod scanner;
 mod compiler;
 mod precedence;
 mod heap;
+mod object;

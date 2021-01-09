@@ -1,22 +1,17 @@
-use crate::{
-    heap::{Gc, Heap, LoxStr},
-    interpreter::{InterpreterResult, VmInit},
-    opcodes::{Chunk, ChunkIterator, Instruction, Number, Value},
-    precedence::ParseFn,
-};
+use crate::{heap::{Gc, Heap, Obj, LoxStr}, interpreter::{InterpreterResult, VmInit}, object::LoxFun, opcodes::{Chunk, ChunkIterator, Instruction, Number, Value}};
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
-    hash::Hash,
-    intrinsics::transmute,
-    iter::{Enumerate, Peekable},
+    iter::{Peekable},
     mem,
     ops::{Add, Div, Mul, Sub},
 };
 
-const STACK_MIN_SIZE: usize = 256;
+const FRAMES_MIN_SIZE: usize = 64;
+const STACK_MIN_SIZE: usize = FRAMES_MIN_SIZE * (StackIndex::MAX as usize + 1);
 
 pub type StackIndex = u8;
+pub type FrameIndex = usize;
 
 type Stack = Vec<Value>;
 type Curr = Peekable<ChunkIterator<'static>>;
@@ -25,6 +20,7 @@ pub struct Vm {
     heap: Heap,
     chunk: Chunk,
     stack: Stack,
+    call_frames: Vec<CallFrame>,
     instr_iter: Curr,
     globals: HashMap<Gc<LoxStr>, Value>,
     had_runtime_error: bool,
@@ -41,6 +37,7 @@ impl Vm {
             heap,
             chunk,
             stack: Vec::with_capacity(STACK_MIN_SIZE),
+            call_frames: Vec::with_capacity(FRAMES_MIN_SIZE),
             instr_iter,
             globals: HashMap::new(),
             had_runtime_error: false,
@@ -287,4 +284,21 @@ fn check_equals(lhs: &Value, rhs: &Value) -> bool {
 
 fn get_cursor(chunk_iter: ChunkIterator) -> Curr {
     unsafe { mem::transmute(chunk_iter.peekable()) }
+}
+
+enum FunctionType {
+    Function,
+    Script,
+}
+
+struct Functions {
+    current: Gc<LoxFun>,
+    list: Vec<Obj<LoxFun>>,
+    type_: FunctionType,
+}
+
+struct CallFrame {
+    function: Gc<LoxFun>,
+    ip: Curr,
+    frame_index: FrameIndex
 }

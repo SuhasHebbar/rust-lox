@@ -610,8 +610,13 @@ const LOCALS_MAX_CAPACITY: usize = u8::MAX as usize;
 
 impl<'a> StackSim<'a> {
     fn new() -> Self {
+        let mut locals = Vec::with_capacity(LOCALS_MAX_CAPACITY);
+
+        let token = Token {line: 0, kind: TokenType::Identifier, description: ""};
+        locals.push(Local { depth: 0, name: token});
+
         Self {
-            locals: Vec::with_capacity(LOCALS_MAX_CAPACITY),
+            locals,
             scope_depth: 0,
         }
     }

@@ -3,7 +3,7 @@ use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, collections::{HashMap, Has
 use std::{hash::Hash, mem};
 
 pub struct Heap {
-    interned_strs: RefCell<HashMap<&'static LoxStr, Box<HeapObj<LoxStr>>>>,
+    interned_strs: RefCell<HashMap<&'static LoxStr, Box<Obj<LoxStr>>>>,
 }
 
 // impl Drop for Heap {
@@ -36,12 +36,12 @@ impl Heap {
         let obj_ptr;
 
         if let Some(heapobj) = heapobj {
-            obj_ptr = heapobj.as_mut() as *mut HeapObj<LoxStr>;
+            obj_ptr = heapobj.as_mut() as *mut Obj<LoxStr>;
         } else {
             drop(heapobj);
             drop(interned_strs);
-            let mut value = Box::new(HeapObj::new(string));
-            obj_ptr = value.as_mut() as *mut HeapObj<LoxStr>;
+            let mut value = Box::new(Obj::new(string));
+            obj_ptr = value.as_mut() as *mut Obj<LoxStr>;
             let new_key = unsafe { mem::transmute(&value.data) };
             self.interned_strs.borrow_mut().insert(new_key, value);
         }
@@ -50,17 +50,17 @@ impl Heap {
 }
 
 #[derive(Clone, Debug)]
-pub struct HeapObj<T: ?Sized> {
+pub struct Obj<T: ?Sized> {
     data: T,
 }
 
-impl<T> HeapObj<T> {
+impl<T> Obj<T> {
     pub fn new(data: T) -> Self {
         Self { data }
     }
 }
 
-impl<T> Hash for HeapObj<T> where T: Hash {
+impl<T> Hash for Obj<T> where T: Hash {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.data.hash(state);
     }
@@ -68,7 +68,7 @@ impl<T> Hash for HeapObj<T> where T: Hash {
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Gc<T> {
-    ptr: NonNull<HeapObj<T>>,
+    ptr: NonNull<Obj<T>>,
 }
 
 impl<T> Copy for Gc<T> {}
@@ -79,17 +79,23 @@ impl<T> Clone for Gc<T> {
 }
 
 impl<T> Gc<T> {
-    fn as_obj(&self) -> &HeapObj<T> {
+    pub fn dangling() -> Self {
+        Self {
+            ptr: NonNull::dangling()
+        }
+    }
+
+    fn as_obj(&self) -> &Obj<T> {
         unsafe { &self.ptr.as_ref() }
     }
 
-    fn as_obj_mut(&mut self) -> &mut HeapObj<T> {
+    fn as_obj_mut(&mut self) -> &mut Obj<T> {
         unsafe { self.ptr.as_mut() }
     }
 }
 
-impl<T> From<*mut HeapObj<T>> for Gc<T> {
-    fn from(val: *mut HeapObj<T>) -> Self {
+impl<T> From<*mut Obj<T>> for Gc<T> {
+    fn from(val: *mut Obj<T>) -> Self {
         let ptr = unsafe { NonNull::new_unchecked(val) };
         Self { ptr }
     }
