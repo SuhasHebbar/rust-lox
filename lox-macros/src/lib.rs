@@ -116,6 +116,8 @@ fn gen_decode(enum_: &Ident, variants: &Vec<(&Ident, Vec<&Ident>)>) -> proc_macr
                             }
             };
 
+            let i= i as u8;
+
             quote! {
                 #i => {
                     #(#field_setters)*
@@ -129,7 +131,7 @@ fn gen_decode(enum_: &Ident, variants: &Vec<(&Ident, Vec<&Ident>)>) -> proc_macr
         fn decode(src: &[u8]) -> (Self, &[u8]) {
             let mut slice_ptr = &src[1..];
             let byte = src[0];
-            match byte as usize {
+            match byte {
                 #(#match_arms),*,
                 _ => {panic!("Invalid instruction byte code")}
             }
