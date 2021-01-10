@@ -145,6 +145,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn emit_return(&mut self) {
+        self.emit_instruction(Instruction::Nil);
         self.emit_instruction(Instruction::Return);
     }
 
@@ -476,11 +477,27 @@ impl<'a> Compiler<'a> {
         Self::make_constant(&mut cctx!(self), Value::String(lox_str), &self.tin)
     }
 
+    fn return_statement(&mut self) {
+        if let FunctionType::Script = cctx!(self).function_type {
+            cctx!(self).errh.error_at_previous(&self.tin, "Can't return from top-level code.");
+        }
+
+        if self.match_tt(TokenType::SemiColon) {
+            self.emit_return();
+        } else {
+            self.expression();
+            self.consume(TokenType::SemiColon, "Expect ';' after return value.");
+            self.emit_instruction(Instruction::Return);
+        }
+    }
+
     pub fn statement(&mut self) {
         if self.match_tt(TokenType::Print) {
             self.print_statement();
         } else if self.match_tt(TokenType::If) {
             self.if_statement();
+        } else if self.match_tt(TokenType::Return) {
+            self.return_statement();
         } else if self.match_tt(TokenType::While) {
             self.while_statement();
         } else if self.match_tt(TokenType::For) {

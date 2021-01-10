@@ -81,9 +81,27 @@ impl Vm {
 
             match instr {
                 Instruction::Return => {
-                    // println!("return {}", self.stack.pop().unwrap());
-                    // return InterpreterResult::Ok;
-                    break;
+                    let result = self.stack.pop().unwrap();
+                    let result_slot = call_frame.frame_index;
+
+                    drop(call_frame);
+                    self.call_frames.pop();
+
+                    if self.call_frames.len() == 0 {
+                        self.stack.pop();
+                        return InterpreterResult::Ok;
+                    }
+
+                    self.stack.truncate(result_slot);
+                    self.stack.push(result);
+
+                    call_frame = get_callframe(&mut self.call_frames);
+
+
+
+
+
+
                 }
                 Instruction::LoadConstant(cin) => {
                     let constant = call_frame.get_value(cin);
