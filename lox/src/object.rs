@@ -28,3 +28,7 @@ impl Display for LoxFun {
     }
 }
 
+pub enum FunctionType {
+    Function,
+    Script,
+}

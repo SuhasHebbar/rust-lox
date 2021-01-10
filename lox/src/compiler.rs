@@ -1,11 +1,18 @@
 use std::convert::TryInto;
 
-use crate::{
-    heap::Heap,
-    opcodes::{ByteCodeOffset, ChunkIterator, ConstantIndex, Number},
-    precedence::{parse_rule, ParseRule, Precedence},
-    vm::StackIndex,
-};
+use crate::{heap::Heap, object::{FunctionType, LoxFun}, opcodes::{ByteCodeOffset, ChunkIterator, ConstantIndex, Number}, precedence::{parse_rule, ParseRule, Precedence}, vm::StackIndex};
+
+macro_rules! cctx {
+     ($self: ident) => {
+        $self.ctx_stk[$self.curr_ctx]
+     };
+}
+
+macro_rules! cchunk {
+     ($self: ident) => {
+        $self.ctx_stk[$self.curr_ctx].function.chunk
+     };
+}
 
 use crate::{
     opcodes::Chunk,
@@ -21,10 +28,9 @@ type StringError = &'static str;
 pub struct Compiler<'a> {
     scanner: Scanner<'a>,
     tin: TokenCursor<'a>,
-    pub chunks: Chunks,
+    ctx_stk: Vec<CompilerContext<'a>>,
+    curr_ctx: usize,
     pub heap: Heap,
-    pub state: StackSim<'a>,
-    pub errh: ErrorHandler,
 }
 
 impl<'a> Compiler<'a> {
@@ -34,17 +40,14 @@ impl<'a> Compiler<'a> {
         Compiler {
             scanner,
             tin: TokenCursor::new(),
-            chunks: Chunks::new(),
+            ctx_stk: vec![CompilerContext::new(FunctionType::Script)], 
+            curr_ctx: 0,
             heap: Heap::new(),
-            state: StackSim::new(),
-            errh: ErrorHandler {
-                had_error: false,
-                panic_mode: false,
-            },
         }
     }
 
-    pub fn compile(&mut self) -> bool {
+    pub fn compile(&mut self) -> Option<LoxFun> {
+        let ctx = cctx!(self);
         self.advance();
 
         while !self.match_tt(TokenType::EOF) {
@@ -54,7 +57,14 @@ impl<'a> Compiler<'a> {
         // This shouldn't be needed as the scanner iterator should return EOF
         // self.consume(EOF, "End of Expression");
         self.end_compile();
-        !self.errh.had_error
+
+        if ctx.errh.had_error {
+            None
+        } else {
+            self.curr_ctx -= 1;
+            let function = self.ctx_stk.pop().unwrap().function;
+            Some(function)
+        }
     }
 
     fn end_compile(&mut self) {
@@ -64,7 +74,7 @@ impl<'a> Compiler<'a> {
         {
             if self.errh.had_error {
                 eprintln!("Dumping bytecode to console");
-                eprintln!("{}", self.chunks.current_chunk());
+                eprintln!("{}", &cchunk!(self));
             }
         }
     }
@@ -105,24 +115,25 @@ impl<'a> Compiler<'a> {
     }
 
     fn add_local(&mut self) {
-        if self.state.size() == LOCALS_MAX_CAPACITY {
+        let ctx = cctx!(self);
+        if ctx.state.size() == LOCALS_MAX_CAPACITY {
             self.error_at_previous("Too many local variables in function.");
             return;
         }
 
-        self.state.add_local(self.tin.pre);
+        ctx.state.add_local(self.tin.pre);
     }
 
     fn error_at_current(&mut self, message: &str) {
-        self.errh.error_at_current(&self.tin, message);
+        cctx!(self).errh.error_at_current(&self.tin, message);
     }
 
     fn error_at_previous(&mut self, message: &str) {
-        self.errh.error_at_previous(&self.tin, message);
+        cctx!(self).errh.error_at_previous(&self.tin, message);
     }
 
     fn emit_instruction(&mut self, instr: Instruction) {
-        self.chunks.emit_instruction(instr, &self.tin.pre)
+        cchunk!(self).add_instruction(instr, self.tin.pre.line)
     }
     
     fn emit_pop(&mut self) {
@@ -134,14 +145,13 @@ impl<'a> Compiler<'a> {
     }
 
     fn make_constant(
-        chunks: &mut Chunks,
+        ctx: &mut CompilerContext,
         value: Value,
-        errh: &mut ErrorHandler,
         cursor: &TokenCursor,
     ) -> ConstantIndex {
-        let constant_index = chunks.emit_value(value);
+        let constant_index = ctx.function.chunk.add_value(value);
         if constant_index > u8::MAX {
-            errh.error_at_previous(cursor, "Too many constants in one chunk.");
+            ctx.errh.error_at_previous(cursor, "Too many constants in one chunk.");
             0
         } else {
             constant_index
@@ -150,12 +160,12 @@ impl<'a> Compiler<'a> {
 
     fn emit_constant(&mut self, value: Value) {
         let constant_index =
-            Self::make_constant(&mut self.chunks, value, &mut self.errh, &self.tin);
+            Self::make_constant(&mut cctx!(self), value, &self.tin);
         self.emit_instruction(Instruction::LoadConstant(constant_index));
     }
 
     fn synchronize(&mut self) {
-        self.errh.panic_mode = false;
+        cctx!(self).errh.panic_mode = false;
 
         while self.tin.cur.kind != TokenType::EOF {
             if self.tin.pre.kind == TokenType::SemiColon {
@@ -291,7 +301,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn resolve_local(&mut self) -> Option<StackIndex> {
-        for (i, local) in self.state.locals.iter().enumerate().rev() {
+        for (i, local) in cctx!(self).state.locals.iter().enumerate().rev() {
             if local.name.description == self.tin.pre.description {
                 if local.depth == -1 {
                     self.error_at_previous("Can't read local variable in its own initializer.");
@@ -311,7 +321,7 @@ impl<'a> Compiler<'a> {
             self.statement();
         }
 
-        if self.errh.panic_mode {
+        if cctx!(self).errh.panic_mode {
             self.synchronize();
         }
     }
@@ -334,8 +344,9 @@ impl<'a> Compiler<'a> {
     }
 
     fn define_variable(&mut self, global: ConstantIndex) {
-        if self.state.scope_depth > 0 {
-            self.state.mark_initialized();
+        let ctx = cctx!(self);
+        if ctx.state.scope_depth > 0 {
+            ctx.state.mark_initialized();
         } else {
             self.emit_instruction(Instruction::DefineGlobal(global));
         }
@@ -345,7 +356,7 @@ impl<'a> Compiler<'a> {
         self.consume(TokenType::Identifier, msg);
 
         self.declare_variable();
-        if self.state.scope_depth > 0 {
+        if cctx!(self).state.scope_depth > 0 {
             return 0;
         }
 
@@ -353,17 +364,18 @@ impl<'a> Compiler<'a> {
     }
 
     fn declare_variable(&mut self) {
-        if self.state.scope_depth == 0 {
+        let ctx = cctx!(self);
+        if ctx.state.scope_depth == 0 {
             return;
         }
 
-        for (i, local) in self.state.locals.iter().enumerate().rev() {
-            if local.depth != -1 && local.depth < self.state.scope_depth {
+        for (i, local) in ctx.state.locals.iter().enumerate().rev() {
+            if local.depth != -1 && local.depth < ctx.state.scope_depth {
                 break;
             }
 
             if local.name.description == self.tin.pre.description {
-                self.errh.error_at(
+                ctx.errh.error_at(
                     &self.tin.pre,
                     "Already variable with this name in this scope.",
                 );
@@ -376,9 +388,8 @@ impl<'a> Compiler<'a> {
     fn make_identifier(&mut self) -> ConstantIndex {
         let lox_str = self.heap.intern_string(self.tin.pre.description);
         Self::make_constant(
-            &mut self.chunks,
+            &mut cctx!(self),
             Value::String(lox_str),
-            &mut self.errh,
             &self.tin,
         )
     }
@@ -417,7 +428,9 @@ impl<'a> Compiler<'a> {
 
         let exit_jump;
 
-        let condition_start = self.chunks.current_chunk().next_byte_index();
+        let cur_chnk = cchunk!(self);
+
+        let condition_start = cur_chnk.next_byte_index();
         let mut post_body = condition_start;
         if self.match_tt(TokenType::SemiColon) {
             exit_jump = None;
@@ -431,7 +444,7 @@ impl<'a> Compiler<'a> {
         let body_start_patch_loc = self.emit_jump(Instruction::jump_placeholder());
 
         if !self.match_tt(TokenType::RightParen) {
-            post_body = self.chunks.current_chunk().next_byte_index();
+            post_body = cur_chnk.next_byte_index();
 
             self.expression();
             self.emit_pop();
@@ -454,7 +467,7 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn while_statement(&mut self) {
-        let loop_jump = self.chunks.current_chunk().next_byte_index();
+        let loop_jump = cchunk!(self).next_byte_index();
         self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after condition.");
@@ -469,12 +482,12 @@ impl<'a> Compiler<'a> {
     }
 
     fn emit_back_jump(&mut self, jump_index: usize) {
-        let offset: Result<ByteCodeOffset, _> = (self.chunks.current_chunk().next_byte_index() - jump_index).try_into();
+        let offset: Result<ByteCodeOffset, _> = (cchunk!(self).next_byte_index() - jump_index).try_into();
 
         if let Ok(offset) = offset {
             self.emit_instruction(Instruction::JumpBack(offset));
         } else {
-            self.errh.error_at_previous(&self.tin, "Loop body too large.");
+            cctx!(self).errh.error_at_previous(&self.tin, "Loop body too large.");
             // self.emit_instruction(Instruction::JumpBack(0));
         }
     }
@@ -505,39 +518,40 @@ impl<'a> Compiler<'a> {
     }
 
     fn patch_fwd_jump(&mut self, patch_loc: usize) {
+        let cur_chnk = cchunk!(self);
         let patch: Result<ByteCodeOffset, _> =
-            (self.chunks.current_chunk().next_byte_index() - patch_loc).try_into();
+            (cur_chnk.next_byte_index() - patch_loc).try_into();
 
         if let Ok(patch) = patch {
-            self.chunks
-                .current_chunk()
+            cur_chnk
                 // + 1 ensures that the ByteCodeIndex is written into the jump offset
                 // not overrwriting in Instr Opcode
                 .patch_bytecode_index(patch_loc + 1, patch as ByteCodeOffset);
         } else {
-            self.errh
+            cctx!(self).errh
                 .error_at_previous(&self.tin, "Too much code to jump over.");
         }
     }
 
     fn emit_jump(&mut self, instr: Instruction) -> usize {
-        let patch_index = self.chunks.current_chunk().next_byte_index();
+        let patch_index = cchunk!(self).next_byte_index();
         self.emit_instruction(instr);
 
         patch_index
     }
 
     fn begin_scope(&mut self) {
-        self.state.begin_scope();
+        cctx!(self).state.begin_scope();
     }
 
     fn end_scope(&mut self) {
-        self.state.end_scope();
+        let ctx = cctx!(self);
+        ctx.state.end_scope();
 
-        for i in (0..self.state.size()).rev() {
-            let local = &self.state.locals[i];
-            if self.state.scope_depth < local.depth {
-                self.state.locals.pop();
+        for i in (0..ctx.state.size()).rev() {
+            let local = &ctx.state.locals[i];
+            if ctx.state.scope_depth < local.depth {
+                ctx.state.locals.pop();
                 self.emit_pop();
             } else {
                 break;
@@ -684,31 +698,6 @@ impl ErrorHandler {
     }
 }
 
-pub struct Chunks {
-    chunk: Chunk,
-}
-
-impl Chunks {
-    fn new() -> Self {
-        Self {
-            chunk: Chunk::new(),
-        }
-    }
-
-    pub fn current_chunk(&mut self) -> &mut Chunk {
-        &mut self.chunk
-    }
-
-    fn emit_instruction(&mut self, instr: Instruction, token: &Token) {
-        let line = token.line;
-        self.current_chunk().add_instruction(instr, line);
-    }
-
-    fn emit_value(&mut self, value: Value) -> ConstantIndex {
-        self.current_chunk().add_value(value)
-    }
-}
-
 struct TokenCursor<'a> {
     cur: Token<'a>,
     pre: Token<'a>,
@@ -719,6 +708,27 @@ impl TokenCursor<'_> {
         Self {
             cur: Token::placeholder(),
             pre: Token::placeholder(),
+        }
+    }
+}
+
+struct CompilerContext<'a> {
+    function: LoxFun,
+    function_type: FunctionType,
+    state: StackSim<'a>,
+    errh: ErrorHandler,
+}
+
+impl CompilerContext<'_> {
+    fn new(function_type: FunctionType) -> Self {
+        Self {
+            function: LoxFun::new(),
+            function_type,
+            state: StackSim::new(),
+            errh: ErrorHandler {
+                had_error: false,
+                panic_mode: false,
+            }
         }
     }
 }
