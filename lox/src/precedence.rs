@@ -69,7 +69,7 @@ const PLACEHOLDER_PARSERULE: ParseRule = ParseRule {
 
 const LEFT_PAREN_RULE: ParseRule = ParseRule {
     prefix: Some(&|this: &mut Compiler, _assign: bool| this.grouping()),
-    infix: None,
+    infix: Some(&|this: &mut Compiler, _assign: bool| this.call()),
     curr_prec: Precedence::None,
 };
 

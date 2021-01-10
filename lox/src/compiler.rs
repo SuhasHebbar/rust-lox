@@ -1,12 +1,6 @@
 use std::convert::TryInto;
 
-use crate::{
-    heap::{Gc, Heap, LoxStr},
-    object::{FunctionType, LoxFun},
-    opcodes::{ByteCodeOffset, ChunkIterator, ConstantIndex, Number},
-    precedence::{parse_rule, ParseRule, Precedence},
-    vm::StackIndex,
-};
+use crate::{heap::{Gc, Heap, LoxStr}, object::{FunctionType, LoxFun}, opcodes::{ArgCount, ByteCodeOffset, ChunkIterator, ConstantIndex, Number}, precedence::{parse_rule, ParseRule, Precedence}, vm::StackIndex};
 
 macro_rules! cctx {
     ($self: ident) => {
@@ -210,6 +204,32 @@ impl<'a> Compiler<'a> {
             TokenType::True => self.emit_instruction(Instruction::True),
             _ => panic!("Non literal token found in literal() parse"),
         }
+    }
+
+    pub fn call(&mut self) {
+        let arg_Count = self.argument_count();
+        self.emit_instruction(Instruction::Call(arg_Count));
+    }
+
+    fn argument_count(&mut self) -> ArgCount {
+        let mut arg_count: ArgCount = 0;
+        if !self.check(TokenType::RightParen) {
+            loop {
+                self.expression();
+
+                if arg_count == ArgCount::MAX {
+                    cctx!(self).errh.error_at_previous(&self.tin, "Can't have more than 255 arguments.");
+                }
+                arg_count += 1;
+
+                if !self.match_tt(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after arguments.");
+
+        arg_count
     }
 
     pub fn grouping(&mut self) {

@@ -8,6 +8,7 @@ use std::{
 pub type Number = f64;
 pub type ConstantIndex = u8;
 pub type ByteCodeOffset = u16;
+pub type ArgCount = u8;
 
 trait ByteCodeEncodeDecode: Sized {
     fn encode(&self, dest: &mut Vec<u8>);
@@ -51,7 +52,9 @@ pub enum Instruction {
 
     JumpFwdIfFalse(ByteCodeOffset),
     JumpForward(ByteCodeOffset),
-    JumpBack(ByteCodeOffset)
+    JumpBack(ByteCodeOffset),
+
+    Call(ArgCount),
 }
 
 impl Instruction {
