@@ -76,7 +76,7 @@ impl<'a> Compiler<'a> {
         if cctx!(self).errh.had_error {
             None
         } else {
-            self.curr_ctx -= 1;
+            self.curr_ctx = if self.curr_ctx == 0 {0} else {self.curr_ctx - 1};
             let function = self.ctx_stk.pop().unwrap().function;
             let func_ptr = self.heap.manage(function);
             Some(func_ptr)
