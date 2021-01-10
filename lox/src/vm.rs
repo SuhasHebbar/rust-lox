@@ -240,6 +240,7 @@ impl Vm {
     fn runtime_error(&mut self, message: impl AsRef<str>) {
         // start moving out functions from borrowing self.
         runtime_error(&mut self.call_frames, &mut self.had_runtime_error, message);
+        self.call_frames.truncate(1);
     }
 
     fn perform_binary_op_plus(&mut self) {
@@ -370,10 +371,18 @@ impl PeekFromTop for Vec<Value> {
 fn runtime_error(call_frames: &mut Vec<CallFrame>, had_runtime_error: &mut bool, message: impl AsRef<str>) {
     let message = message.as_ref();
     eprintln!("{}", message);
-    let call_frame = call_frames.last_mut().unwrap();
-    let instr_index = call_frame.ip.peek().unwrap().0;
-    let line_no = call_frame.get_chunk().get_line(instr_index);
-    eprintln!("[line {}] in script", line_no);
+    for call_frame in call_frames.iter_mut().rev() {
+        let instr_index = call_frame.ip.peek().unwrap().0;
+        let line_no = call_frame.get_chunk().get_line(instr_index);
+        let fun_name = if (*call_frame.function.name).as_ref() == "" {
+            "script"
+        } else {
+            &call_frame.function.name
+        };
+
+        eprintln!("[line {}] in {}", line_no, fun_name);
+    }
+
     *had_runtime_error = true;
 }
 
