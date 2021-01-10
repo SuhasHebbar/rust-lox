@@ -58,6 +58,9 @@ impl Vm {
     }
 
     pub fn run(&mut self) -> InterpreterResult {
+        // transmute is used here as the callframe reference will cause issues with methods that
+        // borrow self down the line.
+        // The Vm struct methods need to be refactored to not need this usage.
         let call_frame: &mut CallFrame = unsafe { mem::transmute(self.call_frames.last_mut().unwrap()) };
 
         #[cfg(feature = "lox_debug")]

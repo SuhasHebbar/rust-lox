@@ -13,10 +13,10 @@ pub struct LoxFun {
 }
 
 impl LoxFun {
-    pub fn new() -> Self {
+    pub fn new(name: Gc<LoxStr>) -> Self {
         Self {
             chunk: Chunk::new(),
-            name: Gc::dangling(),
+            name,
             arity: 0
         }
     }

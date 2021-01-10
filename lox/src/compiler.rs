@@ -1,17 +1,23 @@
 use std::convert::TryInto;
 
-use crate::{heap::{Gc, Heap}, object::{FunctionType, LoxFun}, opcodes::{ByteCodeOffset, ChunkIterator, ConstantIndex, Number}, precedence::{parse_rule, ParseRule, Precedence}, vm::StackIndex};
+use crate::{
+    heap::{Gc, Heap, LoxStr},
+    object::{FunctionType, LoxFun},
+    opcodes::{ByteCodeOffset, ChunkIterator, ConstantIndex, Number},
+    precedence::{parse_rule, ParseRule, Precedence},
+    vm::StackIndex,
+};
 
 macro_rules! cctx {
-     ($self: ident) => {
+    ($self: ident) => {
         $self.ctx_stk[$self.curr_ctx]
-     };
+    };
 }
 
 macro_rules! cchunk {
-     ($self: ident) => {
+    ($self: ident) => {
         $self.ctx_stk[$self.curr_ctx].function.chunk
-     };
+    };
 }
 
 use crate::{
@@ -37,15 +43,13 @@ impl<'a> Compiler<'a> {
     pub fn new(src: &'a str) -> Self {
         let scanner = Scanner::new(src);
         let heap = Heap::new();
-        let mut ctx = CompilerContext::new(FunctionType::Script);
         let empty_string = heap.intern_string("");
-
-        ctx.function.name = empty_string;
+        let mut ctx = CompilerContext::new(FunctionType::Script, empty_string);
 
         Compiler {
             scanner,
             tin: TokenCursor::new(),
-            ctx_stk: vec![ctx], 
+            ctx_stk: vec![ctx],
             curr_ctx: 0,
             heap,
         }
@@ -60,19 +64,10 @@ impl<'a> Compiler<'a> {
 
         // This shouldn't be needed as the scanner iterator should return EOF
         // self.consume(EOF, "End of Expression");
-        self.end_compile();
-
-        if cctx!(self).errh.had_error {
-            None
-        } else {
-            self.curr_ctx -= 1;
-            let function = self.ctx_stk.pop().unwrap().function;
-            let func_ptr = self.heap.manage(function);
-            Some(func_ptr)
-        }
+        self.end_compile()
     }
 
-    fn end_compile(&mut self) {
+    fn end_compile(&mut self) -> Option<Gc<LoxFun>> {
         self.emit_return();
 
         #[cfg(feature = "lox_debug")]
@@ -82,6 +77,15 @@ impl<'a> Compiler<'a> {
                 eprintln!("Dumping bytecode to console");
                 eprintln!("{:?}\n{}", ctx.function_type, &cchunk!(self));
             }
+        }
+
+        if cctx!(self).errh.had_error {
+            None
+        } else {
+            self.curr_ctx -= 1;
+            let function = self.ctx_stk.pop().unwrap().function;
+            let func_ptr = self.heap.manage(function);
+            Some(func_ptr)
         }
     }
 
@@ -141,7 +145,7 @@ impl<'a> Compiler<'a> {
     fn emit_instruction(&mut self, instr: Instruction) {
         cchunk!(self).add_instruction(instr, self.tin.pre.line)
     }
-    
+
     fn emit_pop(&mut self) {
         self.emit_instruction(Instruction::Pop);
     }
@@ -157,7 +161,8 @@ impl<'a> Compiler<'a> {
     ) -> ConstantIndex {
         let constant_index = ctx.function.chunk.add_value(value);
         if constant_index > u8::MAX {
-            ctx.errh.error_at_previous(cursor, "Too many constants in one chunk.");
+            ctx.errh
+                .error_at_previous(cursor, "Too many constants in one chunk.");
             0
         } else {
             constant_index
@@ -165,8 +170,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn emit_constant(&mut self, value: Value) {
-        let constant_index =
-            Self::make_constant(&mut cctx!(self), value, &self.tin);
+        let constant_index = Self::make_constant(&mut cctx!(self), value, &self.tin);
         self.emit_instruction(Instruction::LoadConstant(constant_index));
     }
 
@@ -320,9 +324,65 @@ impl<'a> Compiler<'a> {
         None
     }
 
+    fn fun_declaration(&mut self) {
+        let global = self.parse_variable("Expect function name.");
+        cctx!(self).state.mark_initialized();
+        self.function(FunctionType::Function);
+        self.define_variable(global);
+    }
+
+    fn new_context(heap: &Heap, tin: &TokenCursor, function_type: FunctionType) -> CompilerContext<'a> {
+        let name = heap.intern_string(tin.pre.description);
+        CompilerContext::new(function_type, name)
+    }
+
+    fn function(&mut self, function_type: FunctionType) {
+        self.ctx_stk.push(Self::new_context(&self.heap, &self.tin, function_type));
+        self.curr_ctx += 1;
+
+        cctx!(self).state.begin_scope();
+
+        self.consume(TokenType::LeftParen, "Expect '(' after function name.");
+
+        if !self.check(TokenType::RightParen) {
+            loop {
+                let ctx = &mut cctx!(self);
+                ctx.function.arity += 1;
+
+                if ctx.function.arity > 255 {
+                    ctx.errh
+                        .error_at_current(&self.tin, "Can't have more than 255 parameters.");
+                }
+
+                let param_constant = self.parse_variable("Expect parameter name.");
+                self.define_variable(param_constant);
+
+                if !self.match_tt(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.");
+
+        self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
+
+        self.block();
+
+        let func_ptr = self.end_compile();
+
+        if let Some(func_ptr) = func_ptr {
+            self.emit_constant(Value::Function(func_ptr));
+        } else {
+            self.emit_constant(Value::Function(Gc::dangling()));
+        }
+    }
+
     pub fn declaration(&mut self) {
         if self.match_tt(TokenType::Var) {
             self.var_declaration()
+        } else if self.match_tt(TokenType::Fun) {
+            self.fun_declaration();
         } else {
             self.statement();
         }
@@ -393,11 +453,7 @@ impl<'a> Compiler<'a> {
 
     fn make_identifier(&mut self) -> ConstantIndex {
         let lox_str = self.heap.intern_string(self.tin.pre.description);
-        Self::make_constant(
-            &mut cctx!(self),
-            Value::String(lox_str),
-            &self.tin,
-        )
+        Self::make_constant(&mut cctx!(self), Value::String(lox_str), &self.tin)
     }
 
     pub fn statement(&mut self) {
@@ -486,12 +542,15 @@ impl<'a> Compiler<'a> {
     }
 
     fn emit_back_jump(&mut self, jump_index: usize) {
-        let offset: Result<ByteCodeOffset, _> = (cchunk!(self).next_byte_index() - jump_index).try_into();
+        let offset: Result<ByteCodeOffset, _> =
+            (cchunk!(self).next_byte_index() - jump_index).try_into();
 
         if let Ok(offset) = offset {
             self.emit_instruction(Instruction::JumpBack(offset));
         } else {
-            cctx!(self).errh.error_at_previous(&self.tin, "Loop body too large.");
+            cctx!(self)
+                .errh
+                .error_at_previous(&self.tin, "Loop body too large.");
             // self.emit_instruction(Instruction::JumpBack(0));
         }
     }
@@ -531,7 +590,8 @@ impl<'a> Compiler<'a> {
                 // not overrwriting in Instr Opcode
                 .patch_bytecode_index(patch_loc + 1, patch as ByteCodeOffset);
         } else {
-            cctx!(self).errh
+            cctx!(self)
+                .errh
                 .error_at_previous(&self.tin, "Too much code to jump over.");
         }
     }
@@ -629,8 +689,15 @@ impl<'a> StackSim<'a> {
     fn new() -> Self {
         let mut locals = Vec::with_capacity(LOCALS_MAX_CAPACITY);
 
-        let token = Token {line: 0, kind: TokenType::Identifier, description: ""};
-        locals.push(Local { depth: 0, name: token});
+        let token = Token {
+            line: 0,
+            kind: TokenType::Identifier,
+            description: "",
+        };
+        locals.push(Local {
+            depth: 0,
+            name: token,
+        });
 
         Self {
             locals,
@@ -646,6 +713,10 @@ impl<'a> StackSim<'a> {
     }
 
     fn mark_initialized(&mut self) {
+        if self.scope_depth == 0 {
+            return;
+        }
+
         let len = self.size() - 1;
         self.locals[len].depth = self.scope_depth;
     }
@@ -723,19 +794,21 @@ struct CompilerContext<'a> {
 }
 
 impl CompilerContext<'_> {
-    fn new(function_type: FunctionType) -> Self {
+    fn new(function_type: FunctionType, name: Gc<LoxStr>) -> Self {
         Self {
-            function: LoxFun::new(),
+            function: LoxFun::new(name),
             function_type,
             state: StackSim::new(),
             errh: ErrorHandler {
                 had_error: false,
                 panic_mode: false,
-            }
+            },
         }
     }
 
     fn emit_pop(&mut self, cursor: &TokenCursor) {
-        self.function.chunk.add_instruction(Instruction::Pop, cursor.pre.line);
+        self.function
+            .chunk
+            .add_instruction(Instruction::Pop, cursor.pre.line);
     }
 }
