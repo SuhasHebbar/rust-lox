@@ -434,9 +434,7 @@ impl<'a> Compiler<'a> {
 
         let exit_jump;
 
-        let cur_chnk = cchunk!(self);
-
-        let condition_start = cur_chnk.next_byte_index();
+        let condition_start = cchunk!(self).next_byte_index();
         let mut post_body = condition_start;
         if self.match_tt(TokenType::SemiColon) {
             exit_jump = None;
@@ -450,7 +448,7 @@ impl<'a> Compiler<'a> {
         let body_start_patch_loc = self.emit_jump(Instruction::jump_placeholder());
 
         if !self.match_tt(TokenType::RightParen) {
-            post_body = cur_chnk.next_byte_index();
+            post_body = cchunk!(self).next_byte_index();
 
             self.expression();
             self.emit_pop();
@@ -524,12 +522,11 @@ impl<'a> Compiler<'a> {
     }
 
     fn patch_fwd_jump(&mut self, patch_loc: usize) {
-        let cur_chnk = cchunk!(self);
         let patch: Result<ByteCodeOffset, _> =
-            (cur_chnk.next_byte_index() - patch_loc).try_into();
+            (cchunk!(self).next_byte_index() - patch_loc).try_into();
 
         if let Ok(patch) = patch {
-            cur_chnk
+            cchunk!(self)
                 // + 1 ensures that the ByteCodeIndex is written into the jump offset
                 // not overrwriting in Instr Opcode
                 .patch_bytecode_index(patch_loc + 1, patch as ByteCodeOffset);
@@ -551,14 +548,14 @@ impl<'a> Compiler<'a> {
     }
 
     fn end_scope(&mut self) {
-        let ctx = cctx!(self);
+        let ctx = &mut cctx!(self);
         ctx.state.end_scope();
 
         for i in (0..ctx.state.size()).rev() {
             let local = &ctx.state.locals[i];
             if ctx.state.scope_depth < local.depth {
                 ctx.state.locals.pop();
-                self.emit_pop();
+                ctx.emit_pop(&self.tin);
             } else {
                 break;
             }
@@ -736,5 +733,9 @@ impl CompilerContext<'_> {
                 panic_mode: false,
             }
         }
+    }
+
+    fn emit_pop(&mut self, cursor: &TokenCursor) {
+        self.function.chunk.add_instruction(Instruction::Pop, cursor.pre.line);
     }
 }
