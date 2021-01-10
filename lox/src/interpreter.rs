@@ -1,12 +1,6 @@
 use std::mem;
 
-use crate::{
-    compiler::Compiler,
-    heap::Heap,
-    opcodes::Chunk,
-    scanner::{Scanner, TokenType as T},
-    vm::Vm,
-};
+use crate::{compiler::Compiler, heap::{Gc, Heap}, object::LoxFun, opcodes::Chunk, scanner::{Scanner, TokenType as T}, vm::Vm};
 
 pub enum InterpreterResult {
     Ok,
@@ -33,13 +27,12 @@ impl Interpreter {
     fn compile(&mut self, source: &str) -> Option<VmInit> {
         let mut compiler = Compiler::new(source);
         let compiler_res = compiler.compile();
-        let chunk = mem::replace(compiler.chunks.current_chunk(), Chunk::new());
         let heap = compiler.heap;
 
-        if compiler.errh.had_error {
-            None
+        if let Some(lox_fun) = compiler_res {
+            Some(VmInit {heap, function: lox_fun})
         } else {
-            Some(VmInit { chunk, heap })
+            None
         }
     }
 
@@ -71,6 +64,6 @@ impl Interpreter {
 }
 
 pub struct VmInit {
-    pub chunk: Chunk,
+    pub function: Gc<LoxFun>,
     pub heap: Heap,
 }

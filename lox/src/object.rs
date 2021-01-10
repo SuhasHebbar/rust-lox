@@ -28,6 +28,7 @@ impl Display for LoxFun {
     }
 }
 
+#[derive(Debug)]
 pub enum FunctionType {
     Function,
     Script,

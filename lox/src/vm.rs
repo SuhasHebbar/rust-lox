@@ -1,4 +1,4 @@
-use crate::{heap::{Gc, Heap, Obj, LoxStr}, interpreter::{InterpreterResult, VmInit}, object::LoxFun, opcodes::{Chunk, ChunkIterator, Instruction, Number, Value}};
+use crate::{heap::{Gc, Heap, Obj, LoxStr}, interpreter::{InterpreterResult, VmInit}, object::{FunctionType, LoxFun}, opcodes::{Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value}};
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -18,10 +18,8 @@ type Curr = Peekable<ChunkIterator<'static>>;
 
 pub struct Vm {
     heap: Heap,
-    chunk: Chunk,
     stack: Stack,
     call_frames: Vec<CallFrame>,
-    instr_iter: Curr,
     globals: HashMap<Gc<LoxStr>, Value>,
     had_runtime_error: bool,
 }
@@ -30,15 +28,21 @@ impl Vm {
     pub fn new(vm_init: VmInit) -> Self {
         // https://stackoverflow.com/questions/43952104/how-can-i-store-a-chars-iterator-in-the-same-struct-as-the-string-it-is-iteratin
         // https://stackoverflow.com/questions/32300132/why-cant-i-store-a-value-and-a-reference-to-that-value-in-the-same-struct
-        // This should be safe since we will not move Chunk away while using instr_iter.
-        let VmInit { chunk, heap } = vm_init;
-        let instr_iter = get_cursor(chunk.instr_iter());
+        // This should be safe since we will not move any Chunks away while using instr_iter.
+        let VmInit { function, heap } = vm_init;
+
+        let mut stack = Vec::with_capacity(STACK_MIN_SIZE); 
+        stack.push(Value::Function(function));
+
+        let instr_iter = get_cursor(function.chunk.instr_iter());
+
+        let mut call_frames = Vec::with_capacity(FRAMES_MIN_SIZE);
+        call_frames.push(CallFrame { function, ip: instr_iter, frame_index: 0});
+
         Vm {
             heap,
-            chunk,
-            stack: Vec::with_capacity(STACK_MIN_SIZE),
-            call_frames: Vec::with_capacity(FRAMES_MIN_SIZE),
-            instr_iter,
+            stack,
+            call_frames,
             globals: HashMap::new(),
             had_runtime_error: false,
         }
@@ -54,7 +58,8 @@ impl Vm {
     }
 
     pub fn run(&mut self) -> InterpreterResult {
-        
+        let call_frame: &mut CallFrame = unsafe { mem::transmute(self.call_frames.last_mut().unwrap()) };
+
         #[cfg(feature = "lox_debug")]
         {
             println!("{}", self.chunk);
@@ -62,11 +67,14 @@ impl Vm {
         }
 
 
-        while let Some((index, instr)) = self.instr_iter.peek() {
+        while let Some((index, instr)) = call_frame.ip.peek() {
             #[cfg(feature = "lox_debug")]
             {
                 // println!("{}", self.chunk.disassemble_instruction(*index, &instr));
             }
+
+            let instr = *instr;
+            let index = *index;
 
             match instr {
                 Instruction::Return => {
@@ -75,7 +83,7 @@ impl Vm {
                     break;
                 }
                 Instruction::LoadConstant(cin) => {
-                    let constant = self.chunk.get_value(*cin);
+                    let constant = call_frame.get_value(cin);
                     self.stack.push(constant.clone());
                 }
                 Instruction::Negate => {
@@ -93,8 +101,8 @@ impl Vm {
                     self.stack.push(Value::Boolean(not));
                 }
                 Instruction::Equal => {
-                    let rhs = self.peek(0);
-                    let lhs = self.peek(1);
+                    let rhs = self.stack.peek(0);
+                    let lhs = self.stack.peek(1);
                     let res = check_equals(lhs, rhs);
                     self.stack.pop();
                     self.stack.pop();
@@ -129,13 +137,13 @@ impl Vm {
                     self.stack.pop();
                 }
                 Instruction::DefineGlobal(var_index) => {
-                    let var_name: Gc<LoxStr> = self.chunk.get_value(*var_index).try_into().unwrap();
+                    let var_name: Gc<LoxStr> = call_frame.get_value(var_index).try_into().unwrap();
                     let value = self.stack.pop().unwrap();
                     self.globals.insert(var_name, value);
                 }
                 Instruction::SetGlobal(var_index) => {
-                    let var_name: Gc<LoxStr> = self.chunk.get_value(*var_index).try_into().unwrap();
-                    let value = self.peek(0).clone();
+                    let var_name: Gc<LoxStr> = call_frame.get_value(var_index).try_into().unwrap();
+                    let value = self.stack.peek(0).clone();
                     if let None = self.globals.insert(var_name.clone(), value) {
                         self.globals.remove(&var_name);
                         self.runtime_error(format!("Undefined variable '{}'.", var_name));
@@ -143,7 +151,7 @@ impl Vm {
                     }
                 }
                 Instruction::GetGlobal(var_index) => {
-                    let var_name: Gc<LoxStr> = self.chunk.get_value(*var_index).try_into().unwrap();
+                    let var_name: Gc<LoxStr> = call_frame.get_value(var_index).try_into().unwrap();
                     if let Some(value) = self.globals.get(&var_name) {
                         self.stack.push(value.clone());
                     } else {
@@ -151,34 +159,34 @@ impl Vm {
                     }
                 }
                 Instruction::GetLocal(var_index) => {
-                    self.stack.push(self.stack[*var_index as usize]);
+                    self.stack.push(self.stack[var_index as usize]);
                 }
                 Instruction::SetLocal(var_index) => {
-                    let var_index = *var_index;
+                    let var_index = var_index;
 
-                    self.stack[var_index as usize] = *self.peek(0);
+                    self.stack[var_index as usize] = *self.stack.peek(0);
                 }
                 Instruction::JumpFwdIfFalse(offset) => {
-                    let jump_index = index + *offset as usize;
-                    let stack_val = self.peek(0);
+                    let jump_index = index + offset as usize;
+                    let stack_val = self.stack.peek(0);
                     if is_falsey(stack_val) {
-                        self.instr_iter =
-                            get_cursor(self.chunk.instr_iter_jump(jump_index));
+                        call_frame.ip =
+                            get_cursor(call_frame.get_chunk().instr_iter_jump(jump_index));
                         continue;
                     }
                 }
                 Instruction::JumpForward(offset) => {
-                    let jump_index = index + *offset as usize;
-                    self.instr_iter = get_cursor(self.chunk.instr_iter_jump(jump_index));
+                    let jump_index = index + offset as usize;
+                    call_frame.ip = get_cursor(call_frame.get_chunk().instr_iter_jump(jump_index));
                     continue;
                 }
                 Instruction::JumpBack(offset) => {
-                    let jump_index = index - *offset as usize;
-                    self.instr_iter = get_cursor(self.chunk.instr_iter_jump(jump_index));
+                    let jump_index = index - offset as usize;
+                    call_frame.ip = get_cursor(call_frame.get_chunk().instr_iter_jump(jump_index));
                     continue;
                 }
             };
-            self.instr_iter.next();
+            call_frame.ip.next();
 
             if self.had_runtime_error {
                 return InterpreterResult::RuntimeError;
@@ -192,15 +200,16 @@ impl Vm {
     fn runtime_error(&mut self, message: impl AsRef<str>) {
         let message = message.as_ref();
         eprintln!("{}", message);
-        let instr_index = self.instr_iter.peek().unwrap().0;
-        let line_no = self.chunk.get_line(instr_index);
+        let call_frame = self.call_frames.last_mut().unwrap();
+        let instr_index = call_frame.ip.peek().unwrap().0;
+        let line_no = call_frame.get_chunk().get_line(instr_index);
         eprintln!("[line {}] in script", line_no);
         self.had_runtime_error = true;
     }
 
     fn perform_binary_op_plus(&mut self) {
-        let lhs = self.peek(1);
-        let rhs = self.peek(0);
+        let lhs = self.stack.peek(1);
+        let rhs = self.stack.peek(0);
 
         let res: Value;
 
@@ -241,8 +250,8 @@ impl Vm {
         for<'a> T: TryFrom<&'a Value>,
         T: Copy,
     {
-        let lhs = self.peek(1).try_into();
-        let rhs = self.peek(0).try_into();
+        let lhs = self.stack.peek(1).try_into();
+        let rhs = self.stack.peek(0).try_into();
 
         let temp = (lhs, rhs);
         match &temp {
@@ -286,11 +295,6 @@ fn get_cursor(chunk_iter: ChunkIterator) -> Curr {
     unsafe { mem::transmute(chunk_iter.peekable()) }
 }
 
-enum FunctionType {
-    Function,
-    Script,
-}
-
 struct Functions {
     current: Gc<LoxFun>,
     list: Vec<Obj<LoxFun>>,
@@ -301,4 +305,29 @@ struct CallFrame {
     function: Gc<LoxFun>,
     ip: Curr,
     frame_index: FrameIndex
+}
+
+impl CallFrame {
+    fn get_chunk(&self) -> &Chunk {
+        &self.function.chunk
+    }
+
+    fn get_value(&self, index: ConstantIndex) -> &Value {
+        self.get_chunk().get_value(index)
+    }
+}
+
+trait PeekFromTop {
+    type Target;
+    fn peek(&self, distance: usize) -> &Self::Target;
+}
+
+impl PeekFromTop for Vec<Value> {
+    type Target = Value;
+
+    fn peek(&self, distance: usize) -> &Value {
+
+        let stk_sz = self.len();
+        &self[stk_sz - 1 - distance]
+    }
 }

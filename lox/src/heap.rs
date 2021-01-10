@@ -20,6 +20,11 @@ impl Heap {
         }
     }
 
+    pub fn manage<T>(&self, value: T) -> Gc<T> {
+        let ptr = Box::leak(Box::new(Obj::new(value))) as *mut _;
+        Gc::from(ptr)
+    }
+
     pub fn intern_string(&self, str_ref: impl AsRef<str>) -> Gc<LoxStr> {
         // FIXME: This LoxStr may be discarded if it already exists in the intern cache.
         // To create this we clone the input ref hence potentially allocating uncessarily.

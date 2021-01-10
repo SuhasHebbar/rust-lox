@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 
-use crate::{heap::Heap, object::{FunctionType, LoxFun}, opcodes::{ByteCodeOffset, ChunkIterator, ConstantIndex, Number}, precedence::{parse_rule, ParseRule, Precedence}, vm::StackIndex};
+use crate::{heap::{Gc, Heap}, object::{FunctionType, LoxFun}, opcodes::{ByteCodeOffset, ChunkIterator, ConstantIndex, Number}, precedence::{parse_rule, ParseRule, Precedence}, vm::StackIndex};
 
 macro_rules! cctx {
      ($self: ident) => {
@@ -36,18 +36,22 @@ pub struct Compiler<'a> {
 impl<'a> Compiler<'a> {
     pub fn new(src: &'a str) -> Self {
         let scanner = Scanner::new(src);
+        let heap = Heap::new();
+        let mut ctx = CompilerContext::new(FunctionType::Script);
+        let empty_string = heap.intern_string("");
+
+        ctx.function.name = empty_string;
 
         Compiler {
             scanner,
             tin: TokenCursor::new(),
-            ctx_stk: vec![CompilerContext::new(FunctionType::Script)], 
+            ctx_stk: vec![ctx], 
             curr_ctx: 0,
-            heap: Heap::new(),
+            heap,
         }
     }
 
-    pub fn compile(&mut self) -> Option<LoxFun> {
-        let ctx = cctx!(self);
+    pub fn compile(&mut self) -> Option<Gc<LoxFun>> {
         self.advance();
 
         while !self.match_tt(TokenType::EOF) {
@@ -58,12 +62,13 @@ impl<'a> Compiler<'a> {
         // self.consume(EOF, "End of Expression");
         self.end_compile();
 
-        if ctx.errh.had_error {
+        if cctx!(self).errh.had_error {
             None
         } else {
             self.curr_ctx -= 1;
             let function = self.ctx_stk.pop().unwrap().function;
-            Some(function)
+            let func_ptr = self.heap.manage(function);
+            Some(func_ptr)
         }
     }
 
@@ -72,9 +77,10 @@ impl<'a> Compiler<'a> {
 
         #[cfg(feature = "lox_debug")]
         {
-            if self.errh.had_error {
+            let ctx = cctx!(self);
+            if ctx.errh.had_error {
                 eprintln!("Dumping bytecode to console");
-                eprintln!("{}", &cchunk!(self));
+                eprintln!("{:?}\n{}", ctx.function_type, &cchunk!(self));
             }
         }
     }
@@ -115,7 +121,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn add_local(&mut self) {
-        let ctx = cctx!(self);
+        let ctx = &mut cctx!(self);
         if ctx.state.size() == LOCALS_MAX_CAPACITY {
             self.error_at_previous("Too many local variables in function.");
             return;
@@ -344,7 +350,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn define_variable(&mut self, global: ConstantIndex) {
-        let ctx = cctx!(self);
+        let ctx = &mut cctx!(self);
         if ctx.state.scope_depth > 0 {
             ctx.state.mark_initialized();
         } else {
@@ -364,7 +370,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn declare_variable(&mut self) {
-        let ctx = cctx!(self);
+        let ctx = &mut cctx!(self);
         if ctx.state.scope_depth == 0 {
             return;
         }

@@ -17,7 +17,7 @@ use lox_macros::ByteCodeEncodeDecode;
 
 use crate::{heap::{Gc, LoxStr}, object::LoxFun};
 
-#[derive(Debug, ByteCodeEncodeDecode)]
+#[derive(Debug, Clone, Copy, ByteCodeEncodeDecode)]
 pub enum Instruction {
     Return,
     LoadConstant(ConstantIndex),
