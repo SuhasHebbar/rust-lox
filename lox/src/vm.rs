@@ -1,4 +1,4 @@
-use crate::{heap::{Gc, Heap, Obj, LoxStr}, interpreter::{InterpreterResult, VmInit}, object::{FunctionType, LoxFun}, opcodes::{Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value}};
+use crate::{heap::{Gc, Heap, Obj, LoxStr}, interpreter::{InterpreterResult, VmInit}, object::{FunctionType, LoxFun}, opcodes::{ArgCount, Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value}};
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -61,7 +61,7 @@ impl Vm {
         // transmute is used here as the callframe reference will cause issues with methods that
         // borrow self down the line.
         // The Vm struct methods need to be refactored to not need this usage.
-        let call_frame: &mut CallFrame = unsafe { mem::transmute(self.call_frames.last_mut().unwrap()) };
+        let mut call_frame: &mut CallFrame = get_callframe(&mut self.call_frames);
 
         #[cfg(feature = "lox_debug")]
         {
@@ -162,12 +162,12 @@ impl Vm {
                     }
                 }
                 Instruction::GetLocal(var_index) => {
-                    self.stack.push(self.stack[var_index as usize]);
+                    self.stack.push(self.stack[call_frame.frame_index + var_index as usize]);
                 }
                 Instruction::SetLocal(var_index) => {
                     let var_index = var_index;
 
-                    self.stack[var_index as usize] = *self.stack.peek(0);
+                    self.stack[call_frame.frame_index + var_index as usize] = *self.stack.peek(0);
                 }
                 Instruction::JumpFwdIfFalse(offset) => {
                     let jump_index = index + offset as usize;
@@ -188,6 +188,16 @@ impl Vm {
                     call_frame.ip = get_cursor(call_frame.get_chunk().instr_iter_jump(jump_index));
                     continue;
                 }
+                Instruction::Call(arg_count) => {
+                    drop(call_frame);
+                    let callee = *self.peek(arg_count as usize);
+                    if !self.call_value(callee, arg_count) {
+                        return InterpreterResult::RuntimeError;
+                    }
+
+                    call_frame = get_callframe(&mut self.call_frames);
+                    continue;
+                }
             };
             call_frame.ip.next();
 
@@ -200,14 +210,36 @@ impl Vm {
         return InterpreterResult::Ok;
     }
 
+
+    fn call_value(&mut self, callee: Value, arg_count: ArgCount) -> bool {
+        if let Value::Function(fun_ptr) = callee {
+            self.call(fun_ptr, arg_count)
+        } else {
+            self.runtime_error("Can only call functions and classes.");
+            false
+        }
+    }
+
+    fn call(&mut self, fun_ptr: Gc<LoxFun>, arg_count: ArgCount) -> bool {
+        if arg_count as i32 != fun_ptr.arity {
+            self.runtime_error(format!("Expected {} arguments but got {}.", fun_ptr.arity, arg_count));
+            return false;
+        }
+        let cursor = get_cursor(fun_ptr.chunk.instr_iter());
+        let call_frame = CallFrame { function: fun_ptr, ip: cursor, frame_index: self.stack.len() - arg_count as usize - 1};
+
+        if self.call_frames.len() == FRAMES_MIN_SIZE {
+            self.runtime_error("Stack overflow.");
+            return false;
+        }
+        self.call_frames.push(call_frame);
+        true
+    }
+
+
     fn runtime_error(&mut self, message: impl AsRef<str>) {
-        let message = message.as_ref();
-        eprintln!("{}", message);
-        let call_frame = self.call_frames.last_mut().unwrap();
-        let instr_index = call_frame.ip.peek().unwrap().0;
-        let line_no = call_frame.get_chunk().get_line(instr_index);
-        eprintln!("[line {}] in script", line_no);
-        self.had_runtime_error = true;
+        // start moving out functions from borrowing self.
+        runtime_error(&mut self.call_frames, &mut self.had_runtime_error, message);
     }
 
     fn perform_binary_op_plus(&mut self) {
@@ -333,4 +365,18 @@ impl PeekFromTop for Vec<Value> {
         let stk_sz = self.len();
         &self[stk_sz - 1 - distance]
     }
+}
+
+fn runtime_error(call_frames: &mut Vec<CallFrame>, had_runtime_error: &mut bool, message: impl AsRef<str>) {
+    let message = message.as_ref();
+    eprintln!("{}", message);
+    let call_frame = call_frames.last_mut().unwrap();
+    let instr_index = call_frame.ip.peek().unwrap().0;
+    let line_no = call_frame.get_chunk().get_line(instr_index);
+    eprintln!("[line {}] in script", line_no);
+    *had_runtime_error = true;
+}
+
+fn get_callframe(call_frames: &mut Vec<CallFrame>) -> &'static mut CallFrame {
+unsafe { mem::transmute(call_frames.last_mut().unwrap()) }
 }
