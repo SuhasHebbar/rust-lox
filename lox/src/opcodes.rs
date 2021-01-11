@@ -16,7 +16,7 @@ trait ByteCodeEncodeDecode: Sized {
 }
 use lox_macros::ByteCodeEncodeDecode;
 
-use crate::{heap::{Gc, LoxStr}, object::LoxFun};
+use crate::{heap::{Gc, LoxStr}, native::LoxNativeFun, object::LoxFun};
 
 #[derive(Debug, Clone, Copy, ByteCodeEncodeDecode)]
 pub enum Instruction {
@@ -80,7 +80,8 @@ pub enum Value {
     Number(Number),
     Boolean(bool),
     String(Gc<LoxStr>),
-    Function(Gc<LoxFun>)
+    Function(Gc<LoxFun>),
+    NativeFunction(Gc<LoxNativeFun>),
 }
 
 impl From<Number> for Value {

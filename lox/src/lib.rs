@@ -7,3 +7,4 @@ mod compiler;
 mod precedence;
 mod heap;
 mod object;
+mod native;

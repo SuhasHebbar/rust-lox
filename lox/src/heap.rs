@@ -1,5 +1,5 @@
 /// Currently this is just the bare beginnings of a scaffold for the lox GC.
-use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::Deref, ptr::NonNull, rc::Rc};
+use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc};
 use std::{hash::Hash, mem};
 
 pub struct Heap {
@@ -111,6 +111,12 @@ impl<T> Deref for Gc<T> {
 
     fn deref(&self) -> &Self::Target {
         &self.as_obj().data
+    }
+}
+
+impl<T> DerefMut for Gc<T> {
+    fn deref_mut(&mut self) -> &mut <Self as Deref>::Target {
+        &mut self.as_obj_mut().data
     }
 }
 

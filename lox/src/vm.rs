@@ -1,4 +1,5 @@
-use crate::{heap::{Gc, Heap, Obj, LoxStr}, interpreter::{InterpreterResult, VmInit}, object::{FunctionType, LoxFun}, opcodes::{ArgCount, Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value}};
+use crate::{heap::{Gc, Heap, Obj, LoxStr}, interpreter::{InterpreterResult, VmInit}, native::{ClockNative, LoxNativeFun, ValueToStrConverter}, object::{FunctionType, LoxFun}, opcodes::{ArgCount, Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value}};
+use std::time;
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -15,12 +16,13 @@ pub type FrameIndex = usize;
 
 type Stack = Vec<Value>;
 type Curr = Peekable<ChunkIterator<'static>>;
+type Globals = HashMap<Gc<LoxStr>, Value>;
 
 pub struct Vm {
     heap: Heap,
     stack: Stack,
     call_frames: Vec<CallFrame>,
-    globals: HashMap<Gc<LoxStr>, Value>,
+    globals: Globals,
     had_runtime_error: bool,
 }
 
@@ -30,9 +32,12 @@ impl Vm {
         // https://stackoverflow.com/questions/32300132/why-cant-i-store-a-value-and-a-reference-to-that-value-in-the-same-struct
         // This should be safe since we will not move any Chunks away while using instr_iter.
         let VmInit { function, heap } = vm_init;
+        let mut globals = HashMap::new();
 
         let mut stack = Vec::with_capacity(STACK_MIN_SIZE); 
         stack.push(Value::Function(function));
+
+        initialize_built_ins(&heap, &mut globals);
 
         let instr_iter = get_cursor(function.chunk.instr_iter());
 
@@ -43,7 +48,7 @@ impl Vm {
             heap,
             stack,
             call_frames,
-            globals: HashMap::new(),
+            globals,
             had_runtime_error: false,
         }
     }
@@ -230,11 +235,21 @@ impl Vm {
 
 
     fn call_value(&mut self, callee: Value, arg_count: ArgCount) -> bool {
-        if let Value::Function(fun_ptr) = callee {
-            self.call(fun_ptr, arg_count)
-        } else {
+        match callee {
+            Value::Function(fun_ptr) => {
+                self.call(fun_ptr, arg_count)
+            }
+            Value::NativeFunction(mut fun_ptr) => {
+                let frame_index = self.stack.len() - arg_count as usize;
+                let stack_window = &self.stack[frame_index..];
+                fun_ptr.callable.call(arg_count, stack_window, &self.heap);
+                true
+            }
+            _ => {
+
             self.runtime_error("Can only call functions and classes.");
             false
+            }
         }
     }
 
@@ -322,6 +337,21 @@ impl Vm {
             }
         }
     }
+}
+
+fn initialize_built_ins(heap: &Heap, globals: &mut Globals) {
+    let clock_native = LoxNativeFun::new(ClockNative::new());
+    let value_to_str = LoxNativeFun::new(ValueToStrConverter::new());
+
+    let clock_native = Value::NativeFunction(heap.manage(clock_native));
+    let value_to_str = Value::NativeFunction(heap.manage(value_to_str));
+
+    let clock_native_name = heap.intern_string("clock");
+    let value_to_str_name = heap.intern_string("str");
+
+    globals.insert(clock_native_name, clock_native);
+    globals.insert(value_to_str_name, value_to_str);
+
 }
 
 fn is_falsey(value: &Value) -> bool {
