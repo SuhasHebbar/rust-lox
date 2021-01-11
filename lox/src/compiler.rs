@@ -66,7 +66,7 @@ impl<'a> Compiler<'a> {
 
         #[cfg(feature = "lox_debug")]
         {
-            let ctx = cctx!(self);
+            let ctx = &cctx!(self);
             if ctx.errh.had_error {
                 eprintln!("Dumping bytecode to console");
                 eprintln!("{:?}\n{}", ctx.function_type, &cchunk!(self));

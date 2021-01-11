@@ -70,19 +70,19 @@ impl Vm {
 
         #[cfg(feature = "lox_debug")]
         {
-            println!("{}", self.chunk);
+            println!("{}", call_frame.get_chunk());
             // println!("Starting Execution");
         }
 
 
         while let Some((index, instr)) = call_frame.ip.peek() {
-            #[cfg(feature = "lox_debug")]
-            {
-                // println!("{}", self.chunk.disassemble_instruction(*index, &instr));
-            }
-
             let instr = *instr;
             let index = *index;
+
+            #[cfg(feature = "lox_debug")]
+            {
+                println!("{}", call_frame.get_chunk().disassemble_instruction(index, &instr));
+            }
 
             match instr {
                 Instruction::Return => {
@@ -242,13 +242,17 @@ impl Vm {
             Value::NativeFunction(mut fun_ptr) => {
                 let frame_index = self.stack.len() - arg_count as usize;
                 let stack_window = &self.stack[frame_index..];
-                fun_ptr.callable.call(arg_count, stack_window, &self.heap);
+                let res = fun_ptr.callable.call(arg_count, stack_window, &self.heap);
+                self.stack.truncate(frame_index - 1);
+                self.stack.push(res);
+
+                // Since we skip ip.next after calls we need to add call ip.next for native calls ourselves.
+                self.call_frames.last_mut().unwrap().ip.next();
                 true
             }
             _ => {
-
-            self.runtime_error("Can only call functions and classes.");
-            false
+                self.runtime_error("Can only call functions and classes.");
+                false
             }
         }
     }

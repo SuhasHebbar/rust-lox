@@ -1,4 +1,6 @@
-use std::{fmt, time::Instant};
+use std::{fmt::{self, Formatter}, time::Instant, write};
+
+use fmt::Display;
 
 use crate::{heap::Heap, opcodes::{ArgCount, Value}};
 
@@ -13,6 +15,12 @@ pub trait NativeFun: fmt::Debug + 'static {
 #[derive(Debug)]
 pub struct LoxNativeFun {
     pub callable: Box<dyn NativeFun>,
+}
+
+impl Display for LoxNativeFun {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "<native fn>")
+    }
 }
 
 impl LoxNativeFun {

@@ -130,6 +130,7 @@ impl fmt::Display for Value {
             Value::Boolean(val) => write!(f, "{}", val),
             Value::String(string) => write!(f, "{}", string),
             Value::Function(lox_fun) => write!(f, "{}", lox_fun),
+            Value::NativeFunction(lox_fun) => write!(f, "{}", lox_fun),
 
         }
     }
