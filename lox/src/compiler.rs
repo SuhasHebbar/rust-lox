@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 
-use crate::{heap::{Gc, Heap, LoxStr}, object::{FunctionType, LoxFun}, opcodes::{ArgCount, ByteCodeOffset, ChunkIterator, ConstantIndex, Number}, precedence::{parse_rule, ParseRule, Precedence}, vm::StackIndex};
+use crate::{heap::{Gc, Heap, LoxClosure, LoxStr}, object::{FunctionType, LoxFun}, opcodes::{ArgCount, ByteCodeOffset, ChunkIterator, ConstantIndex, Number}, precedence::{parse_rule, ParseRule, Precedence}, vm::StackIndex};
 
 macro_rules! cctx {
     ($self: ident) => {
@@ -392,11 +392,14 @@ impl<'a> Compiler<'a> {
 
         let func_ptr = self.end_compile();
 
-        if let Some(func_ptr) = func_ptr {
-            self.emit_constant(Value::Function(func_ptr));
+        let func_index = if let Some(func_ptr) = func_ptr {
+            Self::make_constant(&mut cctx!(self), Value::Function(func_ptr), &self.tin)
         } else {
-            self.emit_constant(Value::Function(Gc::dangling()));
-        }
+            Self::make_constant(&mut cctx!(self), Value::Function(Gc::dangling()), &self.tin)
+        };
+
+        self.emit_instruction(Instruction::Closure(func_index));
+
     }
 
     pub fn declaration(&mut self) {

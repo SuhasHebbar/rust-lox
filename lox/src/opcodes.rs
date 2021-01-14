@@ -16,7 +16,7 @@ trait ByteCodeEncodeDecode: Sized {
 }
 use lox_macros::ByteCodeEncodeDecode;
 
-use crate::{heap::{Gc, LoxStr}, native::LoxNativeFun, object::LoxFun};
+use crate::{heap::{Gc, LoxClosure, LoxStr}, native::LoxNativeFun, object::LoxFun};
 
 #[derive(Debug, Clone, Copy, ByteCodeEncodeDecode)]
 pub enum Instruction {
@@ -55,6 +55,7 @@ pub enum Instruction {
     JumpBack(ByteCodeOffset),
 
     Call(ArgCount),
+    Closure(ConstantIndex),
 }
 
 impl Instruction {
@@ -82,6 +83,7 @@ pub enum Value {
     String(Gc<LoxStr>),
     Function(Gc<LoxFun>),
     NativeFunction(Gc<LoxNativeFun>),
+    Closure(Gc<LoxClosure>)
 }
 
 impl From<Number> for Value {
@@ -131,7 +133,7 @@ impl fmt::Display for Value {
             Value::String(string) => write!(f, "{}", string),
             Value::Function(lox_fun) => write!(f, "{}", lox_fun),
             Value::NativeFunction(lox_fun) => write!(f, "{}", lox_fun),
-
+            Value::Closure(lox_closure) =>write!(f, "{}", lox_closure.function),
         }
     }
 }

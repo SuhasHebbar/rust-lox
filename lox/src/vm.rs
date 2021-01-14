@@ -1,4 +1,4 @@
-use crate::{heap::{Gc, Heap, Obj, LoxStr}, interpreter::{InterpreterResult, VmInit}, native::{ClockNative, LoxNativeFun, ValueToStrConverter}, object::{FunctionType, LoxFun}, opcodes::{ArgCount, Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value}};
+use crate::{heap::{Gc, Heap, LoxClosure, LoxStr, Obj}, interpreter::{InterpreterResult, VmInit}, native::{ClockNative, LoxNativeFun, ValueToStrConverter}, object::{FunctionType, LoxFun}, opcodes::{ArgCount, Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value}};
 use std::time;
 use std::{
     collections::HashMap,
@@ -220,6 +220,14 @@ impl Vm {
 
                     call_frame = get_callframe(&mut self.call_frames);
                     continue;
+                }
+                Instruction::Closure(func_index) => {
+                    if let Value::Function(function) = call_frame.get_value(func_index) {
+                        let closure = self.heap.manage(LoxClosure::new(function.clone()));
+                        self.stack.push(Value::Closure(closure));
+                    } else {
+                        panic!("Non closure value loaded for Closure opcode");
+                    }
                 }
             };
             call_frame.ip.next();

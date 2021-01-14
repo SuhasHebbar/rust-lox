@@ -2,8 +2,11 @@
 use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc};
 use std::{hash::Hash, mem};
 
+use crate::object::LoxFun;
+
 pub struct Heap {
     interned_strs: RefCell<HashMap<&'static LoxStr, Box<Obj<LoxStr>>>>,
+    objects: RefCell<Vec<Box<dyn HeapObj>>>,
 }
 
 // impl Drop for Heap {
@@ -17,11 +20,14 @@ impl Heap {
     pub fn new() -> Self {
         Self {
             interned_strs: RefCell::new(HashMap::new()),
+            objects: RefCell::new(Vec::new())
         }
     }
 
     pub fn manage<T>(&self, value: T) -> Gc<T> {
-        let ptr = Box::leak(Box::new(Obj::new(value))) as *mut _;
+        let mut boxed = Box::new(Obj::new(value));
+        let ptr = boxed.as_mut() as *mut _;
+        self.objects.borrow_mut().push(boxed);
         Gc::from(ptr)
     }
 
@@ -55,9 +61,11 @@ impl Heap {
 }
 
 #[derive(Clone, Debug)]
-pub struct Obj<T: ?Sized> {
+pub struct Obj<T: ?Sized + 'static> {
     data: T,
 }
+
+impl<T> HeapObj for Obj<T> {}
 
 impl<T> Obj<T> {
     pub fn new(data: T) -> Self {
@@ -72,7 +80,7 @@ impl<T> Hash for Obj<T> where T: Hash {
 }
 
 #[derive(Debug, Hash, PartialEq, Eq)]
-pub struct Gc<T> {
+pub struct Gc<T: 'static> {
     ptr: NonNull<Obj<T>>,
 }
 
@@ -210,5 +218,21 @@ impl AsRef<str> for LoxStr {
 impl Borrow<str> for LoxStr {
     fn borrow(&self) -> &str {
         self.as_str()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LoxClosure {
+    pub function: Gc<LoxFun>,
+}
+
+trait HeapObj: 'static {
+}
+
+impl LoxClosure {
+    pub fn new(function: Gc<LoxFun>) -> Self {
+        Self {
+            function
+        }
     }
 }
