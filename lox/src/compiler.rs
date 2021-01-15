@@ -70,14 +70,11 @@ impl<'a> Compiler<'a> {
     fn end_compile(&mut self) -> Option<Gc<LoxFun>> {
         self.emit_return();
 
+        #[cfg(feature = "lox_debug")]
+        {
             let ctx = &cctx!(self);
             eprintln!("Dumping bytecode to console");
             eprintln!("{:?}: {} \n{}", ctx.function_type, ctx.function.name, &cchunk!(self));
-        #[cfg(feature = "lox_debug")]
-        {
-            // let ctx = &cctx!(self);
-            // eprintln!("Dumping bytecode to console");
-            // eprintln!("{:?}: {} \n{}", ctx.function_type, ctx.function.name, &cchunk!(self));
             // if ctx.errh.had_error {
             //     eprintln!("Dumping bytecode to console");
             //     eprintln!("{:?}: {} \n{}", ctx.function_type, ctx.function.name, &cchunk!(self));
@@ -451,6 +448,8 @@ impl<'a> Compiler<'a> {
         self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
 
         self.block();
+
+        // self.end_scope();
 
         let func_ptr = self.end_compile();
 
