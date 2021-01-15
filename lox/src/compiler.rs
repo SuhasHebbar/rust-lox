@@ -1,6 +1,12 @@
 use std::convert::TryInto;
 
-use crate::{heap::{Gc, Heap, LoxClosure, LoxStr}, object::{FunctionType, LoxFun}, opcodes::{ArgCount, ByteCodeOffset, ChunkIterator, ConstantIndex, Number}, precedence::{parse_rule, ParseRule, Precedence}, vm::StackIndex};
+use crate::{
+    heap::{Gc, Heap, LoxClosure, LoxStr},
+    object::{FunctionType, LoxFun, UpvalueSim},
+    opcodes::{ArgCount, ByteCodeOffset, ChunkIterator, ConstantIndex, Number},
+    precedence::{parse_rule, ParseRule, Precedence},
+    vm::StackIndex,
+};
 
 macro_rules! cctx {
     ($self: ident) => {
@@ -76,8 +82,13 @@ impl<'a> Compiler<'a> {
         if cctx!(self).errh.had_error {
             None
         } else {
-            self.curr_ctx = if self.curr_ctx == 0 {0} else {self.curr_ctx - 1};
-            let function = self.ctx_stk.pop().unwrap().function;
+            self.curr_ctx = if self.curr_ctx == 0 {
+                0
+            } else {
+                self.curr_ctx - 1
+            };
+            let CompilerContext {mut function, upvalues, .. } = self.ctx_stk.pop().unwrap();
+            function.upvalues = upvalues.into();
             let func_ptr = self.heap.manage(function);
             Some(func_ptr)
         }
@@ -219,7 +230,9 @@ impl<'a> Compiler<'a> {
                 self.expression();
 
                 if arg_count == ArgCount::MAX {
-                    cctx!(self).errh.error_at_previous(&self.tin, "Can't have more than 255 arguments.");
+                    cctx!(self)
+                        .errh
+                        .error_at_previous(&self.tin, "Can't have more than 255 arguments.");
                 }
                 arg_count += 1;
 
@@ -317,9 +330,16 @@ impl<'a> Compiler<'a> {
             get_op = Instruction::GetLocal(arg);
             set_op = Instruction::SetLocal(arg);
         } else {
-            let var_index = self.make_identifier();
-            set_op = Instruction::SetGlobal(var_index);
-            get_op = Instruction::GetGlobal(var_index);
+            let upvalue = self.resolve_upvalue(self.ctx_stk.len() - 1);
+
+            if let Some(upvalue) = upvalue {
+                get_op = Instruction::GetUpValue(upvalue);
+                set_op = Instruction::SetUpValue(upvalue);
+            } else {
+                let var_index = self.make_identifier();
+                set_op = Instruction::SetGlobal(var_index);
+                get_op = Instruction::GetGlobal(var_index);
+            }
         }
 
         if self.match_tt(TokenType::Equal) && assign {
@@ -331,18 +351,45 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn resolve_local(&mut self) -> Option<StackIndex> {
-        for (i, local) in cctx!(self).state.locals.iter().enumerate().rev() {
-            if local.name.description == self.tin.pre.description {
-                if local.depth == -1 {
-                    self.error_at_previous("Can't read local variable in its own initializer.");
-                }
+    fn resolve_upvalue(&mut self, ctx_in: usize) -> Option<StackIndex> {
+        if ctx_in == 0 {
+            return None;
+        }
 
-                return Some(i as u8);
-            }
+        let enclosing_ctx = &mut self.ctx_stk[ctx_in - 1];
+
+        let local = enclosing_ctx.resolve_local(&self.tin);
+
+        if let Some(local) = local {
+            let local = UpvalueSim::Local(local);
+            return self.add_upvalue(ctx_in, local);
+        }
+
+        let upvalue = self.resolve_upvalue(ctx_in - 1);
+
+        if let Some(upvalue) = upvalue {
+            let upvalue = UpvalueSim::Upvalue(upvalue);
+            return self.add_upvalue(ctx_in, upvalue);
         }
 
         None
+    }
+
+    fn add_upvalue(&mut self, ctx_in: usize, upvalue: UpvalueSim) -> Option<StackIndex> {
+        let ctx = &mut self.ctx_stk[ctx_in];
+        if let Some(pos) = ctx.upvalues.iter().position(|element| *element == upvalue) {
+            Some(pos as u8)
+        } else if ctx.upvalues.len() == StackIndex::MAX as usize {
+            self.error_at_previous("Too many closure variables in function.");
+            Some(0)
+        } else {
+            ctx.upvalues.push(upvalue);
+            Some((ctx.upvalues.len() - 1) as u8)
+        }
+    }
+
+    fn resolve_local(&mut self) -> Option<StackIndex> {
+        cctx!(self).resolve_local(&self.tin)
     }
 
     fn fun_declaration(&mut self) {
@@ -352,13 +399,18 @@ impl<'a> Compiler<'a> {
         self.define_variable(global);
     }
 
-    fn new_context(heap: &Heap, tin: &TokenCursor, function_type: FunctionType) -> CompilerContext<'a> {
+    fn new_context(
+        heap: &Heap,
+        tin: &TokenCursor,
+        function_type: FunctionType,
+    ) -> CompilerContext<'a> {
         let name = heap.intern_string(tin.pre.description);
         CompilerContext::new(function_type, name)
     }
 
     fn function(&mut self, function_type: FunctionType) {
-        self.ctx_stk.push(Self::new_context(&self.heap, &self.tin, function_type));
+        self.ctx_stk
+            .push(Self::new_context(&self.heap, &self.tin, function_type));
         self.curr_ctx += 1;
 
         cctx!(self).state.begin_scope();
@@ -399,7 +451,6 @@ impl<'a> Compiler<'a> {
         };
 
         self.emit_instruction(Instruction::Closure(func_index));
-
     }
 
     pub fn declaration(&mut self) {
@@ -482,7 +533,9 @@ impl<'a> Compiler<'a> {
 
     fn return_statement(&mut self) {
         if let FunctionType::Script = cctx!(self).function_type {
-            cctx!(self).errh.error_at_previous(&self.tin, "Can't return from top-level code.");
+            cctx!(self)
+                .errh
+                .error_at_previous(&self.tin, "Can't return from top-level code.");
         }
 
         if self.match_tt(TokenType::SemiColon) {
@@ -828,6 +881,7 @@ impl TokenCursor<'_> {
 
 struct CompilerContext<'a> {
     function: LoxFun,
+    upvalues: Vec<UpvalueSim>,
     function_type: FunctionType,
     state: StackSim<'a>,
     errh: ErrorHandler,
@@ -843,7 +897,25 @@ impl CompilerContext<'_> {
                 had_error: false,
                 panic_mode: false,
             },
+            upvalues: Vec::new(),
         }
+    }
+
+    fn resolve_local(&mut self, cursor: &TokenCursor) -> Option<StackIndex> {
+        for (i, local) in self.state.locals.iter().enumerate().rev() {
+            if local.name.description == cursor.pre.description {
+                if local.depth == -1 {
+                    self.errh.error_at_previous(
+                        cursor,
+                        "Can't read local variable in its own initializer.",
+                    );
+                }
+
+                return Some(i as u8);
+            }
+        }
+
+        None
     }
 
     fn emit_pop(&mut self, cursor: &TokenCursor) {

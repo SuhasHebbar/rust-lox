@@ -9,6 +9,7 @@ pub type Number = f64;
 pub type ConstantIndex = u8;
 pub type ByteCodeOffset = u16;
 pub type ArgCount = u8;
+pub type UpValueIndex = u8;
 
 trait ByteCodeEncodeDecode: Sized {
     fn encode(&self, dest: &mut Vec<u8>);
@@ -56,6 +57,9 @@ pub enum Instruction {
 
     Call(ArgCount),
     Closure(ConstantIndex),
+
+    GetUpValue(UpValueIndex),
+    SetUpValue(UpValueIndex)
 }
 
 impl Instruction {
@@ -84,6 +88,12 @@ pub enum Value {
     Function(Gc<LoxFun>),
     NativeFunction(Gc<LoxNativeFun>),
     Closure(Gc<LoxClosure>)
+}
+
+impl Default for Value {
+    fn default() -> Self {
+        Value::Nil
+    }
 }
 
 impl From<Number> for Value {

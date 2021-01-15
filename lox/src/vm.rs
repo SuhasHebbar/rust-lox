@@ -37,12 +37,16 @@ impl Vm {
         let mut stack = Vec::with_capacity(STACK_MIN_SIZE); 
         stack.push(Value::Function(function));
 
+        let closure_ptr = heap.manage(LoxClosure::new(function));
+        stack.pop();
+        stack.push(Value::Closure(closure_ptr));
+
         initialize_built_ins(&heap, &mut globals);
 
         let instr_iter = get_cursor(function.chunk.instr_iter());
 
         let mut call_frames = Vec::with_capacity(FRAMES_MIN_SIZE);
-        call_frames.push(CallFrame { function, ip: instr_iter, frame_index: 0});
+        call_frames.push(CallFrame { closure: closure_ptr, ip: instr_iter, frame_index: 0});
 
         Vm {
             heap,
@@ -244,8 +248,8 @@ impl Vm {
 
     fn call_value(&mut self, callee: Value, arg_count: ArgCount) -> bool {
         match callee {
-            Value::Function(fun_ptr) => {
-                self.call(fun_ptr, arg_count)
+            Value::Closure(closure_ptr) => {
+                self.call(closure_ptr, arg_count)
             }
             Value::NativeFunction(mut fun_ptr) => {
                 let frame_index = self.stack.len() - arg_count as usize;
@@ -265,13 +269,13 @@ impl Vm {
         }
     }
 
-    fn call(&mut self, fun_ptr: Gc<LoxFun>, arg_count: ArgCount) -> bool {
-        if arg_count as i32 != fun_ptr.arity {
-            self.runtime_error(format!("Expected {} arguments but got {}.", fun_ptr.arity, arg_count));
+    fn call(&mut self, closure_ptr: Gc<LoxClosure>, arg_count: ArgCount) -> bool {
+        if arg_count as i32 != closure_ptr.function.arity {
+            self.runtime_error(format!("Expected {} arguments but got {}.", closure_ptr.function.arity, arg_count));
             return false;
         }
-        let cursor = get_cursor(fun_ptr.chunk.instr_iter());
-        let call_frame = CallFrame { function: fun_ptr, ip: cursor, frame_index: self.stack.len() - arg_count as usize - 1};
+        let cursor = get_cursor(closure_ptr.function.chunk.instr_iter());
+        let call_frame = CallFrame { closure: closure_ptr, ip: cursor, frame_index: self.stack.len() - arg_count as usize - 1};
 
         if self.call_frames.len() == FRAMES_MIN_SIZE {
             self.runtime_error("Stack overflow.");
@@ -391,21 +395,15 @@ fn get_cursor(chunk_iter: ChunkIterator) -> Curr {
     unsafe { mem::transmute(chunk_iter.peekable()) }
 }
 
-struct Functions {
-    current: Gc<LoxFun>,
-    list: Vec<Obj<LoxFun>>,
-    type_: FunctionType,
-}
-
 struct CallFrame {
-    function: Gc<LoxFun>,
+    closure: Gc<LoxClosure>,
     ip: Curr,
     frame_index: FrameIndex
 }
 
 impl CallFrame {
     fn get_chunk(&self) -> &Chunk {
-        &self.function.chunk
+        &self.closure.function.chunk
     }
 
     fn get_value(&self, index: ConstantIndex) -> &Value {
@@ -434,10 +432,10 @@ fn runtime_error(call_frames: &mut Vec<CallFrame>, had_runtime_error: &mut bool,
     for call_frame in call_frames.iter_mut().rev() {
         let instr_index = call_frame.ip.peek().unwrap().0;
         let line_no = call_frame.get_chunk().get_line(instr_index);
-        let fun_name = if (*call_frame.function.name).as_ref() == "" {
+        let fun_name = if (*call_frame.closure.function.name).as_ref() == "" {
             "script"
         } else {
-            &call_frame.function.name
+            &call_frame.closure.function.name
         };
 
         eprintln!("[line {}] in {}", line_no, fun_name);
