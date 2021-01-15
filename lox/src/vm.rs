@@ -80,8 +80,7 @@ impl Vm {
 
         #[cfg(feature = "lox_debug")]
         {
-            println!("{}", call_frame.get_chunk());
-            // println!("Starting Execution");
+            // println!("{}", call_frame.get_chunk());
         }
 
         while let Some((index, instr)) = call_frame.ip.peek() {

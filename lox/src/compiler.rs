@@ -70,13 +70,18 @@ impl<'a> Compiler<'a> {
     fn end_compile(&mut self) -> Option<Gc<LoxFun>> {
         self.emit_return();
 
+            let ctx = &cctx!(self);
+            eprintln!("Dumping bytecode to console");
+            eprintln!("{:?}: {} \n{}", ctx.function_type, ctx.function.name, &cchunk!(self));
         #[cfg(feature = "lox_debug")]
         {
-            let ctx = &cctx!(self);
-            if ctx.errh.had_error {
-                eprintln!("Dumping bytecode to console");
-                eprintln!("{:?}\n{}", ctx.function_type, &cchunk!(self));
-            }
+            // let ctx = &cctx!(self);
+            // eprintln!("Dumping bytecode to console");
+            // eprintln!("{:?}: {} \n{}", ctx.function_type, ctx.function.name, &cchunk!(self));
+            // if ctx.errh.had_error {
+            //     eprintln!("Dumping bytecode to console");
+            //     eprintln!("{:?}: {} \n{}", ctx.function_type, ctx.function.name, &cchunk!(self));
+            // }
         }
 
         if cctx!(self).errh.had_error {

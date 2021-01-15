@@ -91,12 +91,6 @@ pub enum Value {
     Closure(Gc<LoxClosure>),
 }
 
-impl Default for Value {
-    fn default() -> Self {
-        Value::Nil
-    }
-}
-
 impl From<Number> for Value {
     fn from(val: Number) -> Self {
         Value::Number(val)
@@ -210,8 +204,6 @@ impl Chunk {
             Instruction::DefineGlobal(var_index)
             | Instruction::GetGlobal(var_index)
             | Instruction::SetGlobal(var_index)
-            | Instruction::GetLocal(var_index)
-            | Instruction::SetLocal(var_index)
             | Instruction::LoadConstant(var_index) => format!("{{value = {}}}", self.get_value(*var_index)),
             _ => "".to_owned(),
         };

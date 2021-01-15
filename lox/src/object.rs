@@ -65,7 +65,7 @@ impl Upvalue {
 
         Self {
             location,
-            value: Value::default()
+            value: Value::Nil
         }
     }
 
