@@ -1,0 +1,16 @@
+var a = "b";
+var c= 2;
+{
+	var a = 1;
+	var c = 2;
+
+	print a;
+	print c;
+{
+	var a = 1;
+	var c = 2;
+
+	print a;
+	print c;
+}
+}
