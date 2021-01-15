@@ -110,6 +110,7 @@ impl Vm {
                         return InterpreterResult::Ok;
                     }
 
+                    self.close_upvalues(result_slot);
                     self.stack.truncate(result_slot);
                     self.stack.push(result);
 

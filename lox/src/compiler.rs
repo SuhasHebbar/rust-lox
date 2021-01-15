@@ -449,8 +449,6 @@ impl<'a> Compiler<'a> {
 
         self.block();
 
-        // self.end_scope();
-
         let func_ptr = self.end_compile();
 
         let func_index = if let Some(func_ptr) = func_ptr {
