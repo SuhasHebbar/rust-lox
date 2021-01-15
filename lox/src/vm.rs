@@ -277,7 +277,7 @@ impl Vm {
     fn close_upvalues(&mut self, stack_in: usize) {
         let value_ptr = &mut self.stack[stack_in] as *mut Value;
         let mut new_size = self.open_upvalues.len();
-        for (index, ptr) in self.open_upvalues.iter().enumerate().rev() {
+        for (index, ptr) in self.open_upvalues.iter_mut().enumerate().rev() {
             if ptr.value_ptr() >= value_ptr {
                 ptr.close();
             } else {

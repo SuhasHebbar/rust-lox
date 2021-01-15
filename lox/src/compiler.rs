@@ -1,7 +1,7 @@
 use std::convert::TryInto;
 
 use crate::{
-    heap::{Gc, Heap, LoxClosure, LoxStr},
+    heap::{Gc, Heap, LoxStr},
     object::{FunctionType, LoxFun, UpvalueSim},
     opcodes::{ArgCount, ByteCodeOffset, ChunkIterator, ConstantIndex, Number},
     precedence::{parse_rule, ParseRule, Precedence},
