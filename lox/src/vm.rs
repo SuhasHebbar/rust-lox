@@ -1,9 +1,9 @@
-use crate::{heap::{Gc, Heap, LoxClosure, LoxStr, Obj}, interpreter::{InterpreterResult, VmInit}, native::{ClockNative, LoxNativeFun, ValueToStrConverter}, object::{FunctionType, LoxFun}, opcodes::{ArgCount, Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value}};
-use std::time;
+use crate::{heap::{Gc, Heap, LoxStr, Obj}, interpreter::{InterpreterResult, VmInit}, native::{ClockNative, LoxNativeFun, ValueToStrConverter}, object::{FunctionType, LoxClosure, LoxFun, Upvalue}, opcodes::{ArgCount, Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value}};
+use std::{time, todo};
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
-    iter::{Peekable},
+    iter::Peekable,
     mem,
     ops::{Add, Div, Mul, Sub},
 };
@@ -24,6 +24,7 @@ pub struct Vm {
     call_frames: Vec<CallFrame>,
     globals: Globals,
     had_runtime_error: bool,
+    open_upvalues: Vec<Gc<Upvalue>>,
 }
 
 impl Vm {
@@ -34,7 +35,7 @@ impl Vm {
         let VmInit { function, heap } = vm_init;
         let mut globals = HashMap::new();
 
-        let mut stack = Vec::with_capacity(STACK_MIN_SIZE); 
+        let mut stack = Vec::with_capacity(STACK_MIN_SIZE);
         stack.push(Value::Function(function));
 
         let closure_ptr = heap.manage(LoxClosure::new(function));
@@ -46,7 +47,11 @@ impl Vm {
         let instr_iter = get_cursor(function.chunk.instr_iter());
 
         let mut call_frames = Vec::with_capacity(FRAMES_MIN_SIZE);
-        call_frames.push(CallFrame { closure: closure_ptr, ip: instr_iter, frame_index: 0});
+        call_frames.push(CallFrame {
+            closure: closure_ptr,
+            ip: instr_iter,
+            frame_index: 0,
+        });
 
         Vm {
             heap,
@@ -54,6 +59,7 @@ impl Vm {
             call_frames,
             globals,
             had_runtime_error: false,
+            open_upvalues: Vec::new(),
         }
     }
 
@@ -78,14 +84,18 @@ impl Vm {
             // println!("Starting Execution");
         }
 
-
         while let Some((index, instr)) = call_frame.ip.peek() {
             let instr = *instr;
             let index = *index;
 
             #[cfg(feature = "lox_debug")]
             {
-                println!("{}", call_frame.get_chunk().disassemble_instruction(index, &instr));
+                println!(
+                    "{}",
+                    call_frame
+                        .get_chunk()
+                        .disassemble_instruction(index, &instr)
+                );
             }
 
             match instr {
@@ -105,12 +115,6 @@ impl Vm {
                     self.stack.push(result);
 
                     call_frame = get_callframe(&mut self.call_frames);
-
-
-
-
-
-
                 }
                 Instruction::LoadConstant(cin) => {
                     let constant = call_frame.get_value(cin);
@@ -189,7 +193,8 @@ impl Vm {
                     }
                 }
                 Instruction::GetLocal(var_index) => {
-                    self.stack.push(self.stack[call_frame.frame_index + var_index as usize]);
+                    self.stack
+                        .push(self.stack[call_frame.frame_index + var_index as usize]);
                 }
                 Instruction::SetLocal(var_index) => {
                     let var_index = var_index;
@@ -227,11 +232,36 @@ impl Vm {
                 }
                 Instruction::Closure(func_index) => {
                     if let Value::Function(function) = call_frame.get_value(func_index) {
-                        let closure = self.heap.manage(LoxClosure::new(function.clone()));
+                        let mut closure = self.heap.manage(LoxClosure::new(function.clone()));
+                        for upvalue_sim in function.upvalues.iter() {
+                            match upvalue_sim {
+                                crate::object::UpvalueSim::Local(index) => {
+                                    let value_ptr = &mut self.stack[call_frame.frame_index + *index as usize] as *mut Value;
+                                    closure.upvalues.push(self.capture_upvalue(value_ptr));
+                                }
+                                crate::object::UpvalueSim::Upvalue(index) => {
+                                    let upvalue_ptr = call_frame.closure.upvalues[*index as usize];
+                                    closure.upvalues.push(upvalue_ptr);
+                                }
+                            }
+                        }
                         self.stack.push(Value::Closure(closure));
                     } else {
                         panic!("Non closure value loaded for Closure opcode");
                     }
+                }
+                Instruction::GetUpvalue(index) => self.stack.push(
+                    (*call_frame.closure.upvalues[index as usize])
+                        .as_ref()
+                        .clone(),
+                ),
+                Instruction::SetUpvalue(index) => {
+                    let value_ref = (*call_frame.closure.upvalues[index as usize]).as_mut();
+                    *value_ref = *self.peek(0);
+                }
+                Instruction::CloseUpvalue => {
+                    self.close_upvalues(self.stack.len() - 1);
+                    self.stack.pop();
                 }
             };
             call_frame.ip.next();
@@ -241,16 +271,44 @@ impl Vm {
             }
         }
 
-
         return InterpreterResult::Ok;
     }
 
+    fn close_upvalues(&mut self, stack_in: usize) {
+        let value_ptr = &mut self.stack[stack_in] as *mut Value;
+        let mut new_size = self.open_upvalues.len();
+        for (index, ptr) in self.open_upvalues.iter().enumerate().rev() {
+            if ptr.value_ptr() >= value_ptr {
+                ptr.close();
+            } else {
+                new_size = index + 1;
+            }
+        }
+
+        self.open_upvalues.truncate(new_size);
+    }
+
+    fn capture_upvalue(&mut self, value_ptr: *mut Value) -> Gc<Upvalue> {
+        let mut insert_index = 0;
+        for (index, val) in self.open_upvalues.iter().enumerate().rev() {
+            if val.value_ptr() == value_ptr {
+                return *val;
+            }
+
+            if val.value_ptr() < value_ptr {
+                insert_index = index + 1;
+                break;
+            }
+        }
+
+        let upvalue_ptr = self.heap.manage(Upvalue::new(value_ptr));
+        self.open_upvalues.insert(insert_index, upvalue_ptr);
+        return upvalue_ptr;
+    }
 
     fn call_value(&mut self, callee: Value, arg_count: ArgCount) -> bool {
         match callee {
-            Value::Closure(closure_ptr) => {
-                self.call(closure_ptr, arg_count)
-            }
+            Value::Closure(closure_ptr) => self.call(closure_ptr, arg_count),
             Value::NativeFunction(mut fun_ptr) => {
                 let frame_index = self.stack.len() - arg_count as usize;
                 let stack_window = &self.stack[frame_index..];
@@ -271,11 +329,18 @@ impl Vm {
 
     fn call(&mut self, closure_ptr: Gc<LoxClosure>, arg_count: ArgCount) -> bool {
         if arg_count as i32 != closure_ptr.function.arity {
-            self.runtime_error(format!("Expected {} arguments but got {}.", closure_ptr.function.arity, arg_count));
+            self.runtime_error(format!(
+                "Expected {} arguments but got {}.",
+                closure_ptr.function.arity, arg_count
+            ));
             return false;
         }
         let cursor = get_cursor(closure_ptr.function.chunk.instr_iter());
-        let call_frame = CallFrame { closure: closure_ptr, ip: cursor, frame_index: self.stack.len() - arg_count as usize - 1};
+        let call_frame = CallFrame {
+            closure: closure_ptr,
+            ip: cursor,
+            frame_index: self.stack.len() - arg_count as usize - 1,
+        };
 
         if self.call_frames.len() == FRAMES_MIN_SIZE {
             self.runtime_error("Stack overflow.");
@@ -284,7 +349,6 @@ impl Vm {
         self.call_frames.push(call_frame);
         true
     }
-
 
     fn runtime_error(&mut self, message: impl AsRef<str>) {
         // start moving out functions from borrowing self.
@@ -367,7 +431,6 @@ fn initialize_built_ins(heap: &Heap, globals: &mut Globals) {
 
     globals.insert(clock_native_name, clock_native);
     globals.insert(value_to_str_name, value_to_str);
-
 }
 
 fn is_falsey(value: &Value) -> bool {
@@ -398,7 +461,7 @@ fn get_cursor(chunk_iter: ChunkIterator) -> Curr {
 struct CallFrame {
     closure: Gc<LoxClosure>,
     ip: Curr,
-    frame_index: FrameIndex
+    frame_index: FrameIndex,
 }
 
 impl CallFrame {
@@ -420,13 +483,16 @@ impl PeekFromTop for Vec<Value> {
     type Target = Value;
 
     fn peek(&self, distance: usize) -> &Value {
-
         let stk_sz = self.len();
         &self[stk_sz - 1 - distance]
     }
 }
 
-fn runtime_error(call_frames: &mut Vec<CallFrame>, had_runtime_error: &mut bool, message: impl AsRef<str>) {
+fn runtime_error(
+    call_frames: &mut Vec<CallFrame>,
+    had_runtime_error: &mut bool,
+    message: impl AsRef<str>,
+) {
     let message = message.as_ref();
     eprintln!("{}", message);
     for call_frame in call_frames.iter_mut().rev() {
@@ -445,5 +511,5 @@ fn runtime_error(call_frames: &mut Vec<CallFrame>, had_runtime_error: &mut bool,
 }
 
 fn get_callframe(call_frames: &mut Vec<CallFrame>) -> &'static mut CallFrame {
-unsafe { mem::transmute(call_frames.last_mut().unwrap()) }
+    unsafe { mem::transmute(call_frames.last_mut().unwrap()) }
 }

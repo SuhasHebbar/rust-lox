@@ -53,8 +53,9 @@ pub enum UpvalueSim {
     Upvalue(StackIndex),
 }
 
+#[derive(Debug, Clone)]
 pub struct Upvalue {
-    location: NonNull<Value>,
+    pub location: NonNull<Value>,
     value: Value
 }
 
@@ -74,7 +75,13 @@ impl Upvalue {
             self.location = NonNull::new_unchecked(&mut self.value as *mut _);
         }
     }
+
+    pub fn value_ptr(&self) -> *mut Value {
+        self.location.as_ptr()
+    }
 }
+
+// impl AsPtr
 
 impl AsRef<Value> for Upvalue {
     fn as_ref(&self) -> &Value {
@@ -88,6 +95,21 @@ impl AsMut<Value> for Upvalue {
     fn as_mut(&mut self) -> &mut Value {
         unsafe {
             self.location.as_mut()
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct LoxClosure {
+    pub function: Gc<LoxFun>,
+    pub upvalues: Vec<Gc<Upvalue>>,
+}
+
+impl LoxClosure {
+    pub fn new(function: Gc<LoxFun>) -> Self {
+        Self {
+            function,
+            upvalues: Vec::with_capacity(function.upvalues.len()),
         }
     }
 }

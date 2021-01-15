@@ -2,7 +2,7 @@
 use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc};
 use std::{hash::Hash, mem};
 
-use crate::object::LoxFun;
+use crate::object::{LoxFun, Upvalue};
 
 pub struct Heap {
     interned_strs: RefCell<HashMap<&'static LoxStr, Box<Obj<LoxStr>>>>,
@@ -221,18 +221,5 @@ impl Borrow<str> for LoxStr {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct LoxClosure {
-    pub function: Gc<LoxFun>,
-}
-
 trait HeapObj: 'static {
-}
-
-impl LoxClosure {
-    pub fn new(function: Gc<LoxFun>) -> Self {
-        Self {
-            function
-        }
-    }
 }

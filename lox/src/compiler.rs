@@ -87,7 +87,11 @@ impl<'a> Compiler<'a> {
             } else {
                 self.curr_ctx - 1
             };
-            let CompilerContext {mut function, upvalues, .. } = self.ctx_stk.pop().unwrap();
+            let CompilerContext {
+                mut function,
+                upvalues,
+                ..
+            } = self.ctx_stk.pop().unwrap();
             function.upvalues = upvalues.into();
             let func_ptr = self.heap.manage(function);
             Some(func_ptr)
@@ -131,12 +135,12 @@ impl<'a> Compiler<'a> {
 
     fn add_local(&mut self) {
         let ctx = &mut cctx!(self);
-        if ctx.state.size() == LOCALS_MAX_CAPACITY {
+        if ctx.stack_sim.size() == LOCALS_MAX_CAPACITY {
             self.error_at_previous("Too many local variables in function.");
             return;
         }
 
-        ctx.state.add_local(self.tin.pre);
+        ctx.stack_sim.add_local(self.tin.pre);
     }
 
     fn error_at_current(&mut self, message: &str) {
@@ -148,11 +152,11 @@ impl<'a> Compiler<'a> {
     }
 
     fn emit_instruction(&mut self, instr: Instruction) {
-        cchunk!(self).add_instruction(instr, self.tin.pre.line)
+        cctx!(self).emit_instruction(instr, &self.tin);
     }
 
     fn emit_pop(&mut self) {
-        self.emit_instruction(Instruction::Pop);
+        cctx!(self).emit_pop(&self.tin);
     }
 
     fn emit_return(&mut self) {
@@ -333,8 +337,8 @@ impl<'a> Compiler<'a> {
             let upvalue = self.resolve_upvalue(self.ctx_stk.len() - 1);
 
             if let Some(upvalue) = upvalue {
-                get_op = Instruction::GetUpValue(upvalue);
-                set_op = Instruction::SetUpValue(upvalue);
+                get_op = Instruction::GetUpvalue(upvalue);
+                set_op = Instruction::SetUpvalue(upvalue);
             } else {
                 let var_index = self.make_identifier();
                 set_op = Instruction::SetGlobal(var_index);
@@ -360,8 +364,9 @@ impl<'a> Compiler<'a> {
 
         let local = enclosing_ctx.resolve_local(&self.tin);
 
-        if let Some(local) = local {
-            let local = UpvalueSim::Local(local);
+        if let Some(local_index) = local {
+            enclosing_ctx.stack_sim.locals[local_index as usize].captured = true;
+            let local = UpvalueSim::Local(local_index);
             return self.add_upvalue(ctx_in, local);
         }
 
@@ -394,7 +399,7 @@ impl<'a> Compiler<'a> {
 
     fn fun_declaration(&mut self) {
         let global = self.parse_variable("Expect function name.");
-        cctx!(self).state.mark_initialized();
+        cctx!(self).stack_sim.mark_initialized();
         self.function(FunctionType::Function);
         self.define_variable(global);
     }
@@ -413,7 +418,7 @@ impl<'a> Compiler<'a> {
             .push(Self::new_context(&self.heap, &self.tin, function_type));
         self.curr_ctx += 1;
 
-        cctx!(self).state.begin_scope();
+        cctx!(self).stack_sim.begin_scope();
 
         self.consume(TokenType::LeftParen, "Expect '(' after function name.");
 
@@ -486,8 +491,8 @@ impl<'a> Compiler<'a> {
 
     fn define_variable(&mut self, global: ConstantIndex) {
         let ctx = &mut cctx!(self);
-        if ctx.state.scope_depth > 0 {
-            ctx.state.mark_initialized();
+        if ctx.stack_sim.scope_depth > 0 {
+            ctx.stack_sim.mark_initialized();
         } else {
             self.emit_instruction(Instruction::DefineGlobal(global));
         }
@@ -497,7 +502,7 @@ impl<'a> Compiler<'a> {
         self.consume(TokenType::Identifier, msg);
 
         self.declare_variable();
-        if cctx!(self).state.scope_depth > 0 {
+        if cctx!(self).stack_sim.scope_depth > 0 {
             return 0;
         }
 
@@ -506,12 +511,12 @@ impl<'a> Compiler<'a> {
 
     fn declare_variable(&mut self) {
         let ctx = &mut cctx!(self);
-        if ctx.state.scope_depth == 0 {
+        if ctx.stack_sim.scope_depth == 0 {
             return;
         }
 
-        for (i, local) in ctx.state.locals.iter().enumerate().rev() {
-            if local.depth != -1 && local.depth < ctx.state.scope_depth {
+        for (i, local) in ctx.stack_sim.locals.iter().enumerate().rev() {
+            if local.depth != -1 && local.depth < ctx.stack_sim.scope_depth {
                 break;
             }
 
@@ -697,28 +702,26 @@ impl<'a> Compiler<'a> {
     }
 
     fn begin_scope(&mut self) {
-        cctx!(self).state.begin_scope();
+        cctx!(self).stack_sim.begin_scope();
     }
 
     fn end_scope(&mut self) {
         let ctx = &mut cctx!(self);
-        ctx.state.end_scope();
+        ctx.stack_sim.end_scope();
 
-        for i in (0..ctx.state.size()).rev() {
-            let local = &ctx.state.locals[i];
-            if ctx.state.scope_depth < local.depth {
-                ctx.state.locals.pop();
-                ctx.emit_pop(&self.tin);
+        for i in (0..ctx.stack_sim.size()).rev() {
+            let local = &ctx.stack_sim.locals[i];
+            if ctx.stack_sim.scope_depth < local.depth {
+                let local = ctx.stack_sim.locals.pop().unwrap();
+                if local.captured {
+                    ctx.emit_instruction(Instruction::CloseUpvalue, &self.tin);
+                } else {
+                    ctx.emit_pop(&self.tin);
+                }
             } else {
                 break;
             }
         }
-        // for local in self.state.locals.iter().rev() {
-        //     if self.state.scope_depth < local.depth {
-        //         self.state.locals.pop();
-        //         self.emit_pop();
-        //     }
-        // }
     }
 
     pub fn block(&mut self) {
@@ -787,10 +790,7 @@ impl<'a> StackSim<'a> {
             kind: TokenType::Identifier,
             description: "",
         };
-        locals.push(Local {
-            depth: 0,
-            name: token,
-        });
+        locals.push(Local::new(token, 0));
 
         Self {
             locals,
@@ -799,10 +799,7 @@ impl<'a> StackSim<'a> {
     }
 
     fn add_local(&mut self, token: Token<'a>) {
-        self.locals.push(Local {
-            name: token,
-            depth: -1,
-        });
+        self.locals.push(Local::new(token, -1));
     }
 
     fn mark_initialized(&mut self) {
@@ -830,6 +827,17 @@ impl<'a> StackSim<'a> {
 pub struct Local<'a> {
     name: Token<'a>,
     depth: isize,
+    captured: bool,
+}
+
+impl<'a> Local<'a> {
+    fn new(token: Token<'a>, depth: isize) -> Self {
+        Self {
+            name: token,
+            depth,
+            captured: false,
+        }
+    }
 }
 
 pub struct ErrorHandler {
@@ -883,7 +891,7 @@ struct CompilerContext<'a> {
     function: LoxFun,
     upvalues: Vec<UpvalueSim>,
     function_type: FunctionType,
-    state: StackSim<'a>,
+    stack_sim: StackSim<'a>,
     errh: ErrorHandler,
 }
 
@@ -892,7 +900,7 @@ impl CompilerContext<'_> {
         Self {
             function: LoxFun::new(name),
             function_type,
-            state: StackSim::new(),
+            stack_sim: StackSim::new(),
             errh: ErrorHandler {
                 had_error: false,
                 panic_mode: false,
@@ -902,7 +910,7 @@ impl CompilerContext<'_> {
     }
 
     fn resolve_local(&mut self, cursor: &TokenCursor) -> Option<StackIndex> {
-        for (i, local) in self.state.locals.iter().enumerate().rev() {
+        for (i, local) in self.stack_sim.locals.iter().enumerate().rev() {
             if local.name.description == cursor.pre.description {
                 if local.depth == -1 {
                     self.errh.error_at_previous(
@@ -918,9 +926,11 @@ impl CompilerContext<'_> {
         None
     }
 
+    fn emit_instruction(&mut self, instr: Instruction, cursor: &TokenCursor) {
+        self.function.chunk.add_instruction(instr, cursor.pre.line);
+    }
+
     fn emit_pop(&mut self, cursor: &TokenCursor) {
-        self.function
-            .chunk
-            .add_instruction(Instruction::Pop, cursor.pre.line);
+        self.emit_instruction(Instruction::Pop, cursor);
     }
 }
