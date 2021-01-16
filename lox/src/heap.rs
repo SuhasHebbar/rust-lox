@@ -62,7 +62,7 @@ impl Heap {
             let curr_allocated = self.bytes_allocated.get();
             println!(
                 "   Collected {} bytes (from {} to {}). Next at {}",
-                curr_allocated - bytes_allocated_prev,
+                bytes_allocated_prev - curr_allocated ,
                 bytes_allocated_prev,
                 curr_allocated,
                 next_gc
@@ -143,7 +143,7 @@ impl Heap {
         let mut boxed = Box::new(Obj::new(value));
         let ptr = boxed.as_mut() as *mut _;
 
-        let bytes_allocated = std::mem::size_of_val(&boxed.data);
+        let bytes_allocated = boxed.bytes_allocated();
 
         let total_bytes_allocated = bytes_allocated + self.bytes_allocated.get();
         self.bytes_allocated.replace(total_bytes_allocated);
@@ -184,8 +184,7 @@ impl Heap {
             obj_ptr = boxed.as_mut() as *mut Obj<LoxStr>;
 
             // Update bytes allocated
-            let bytes_allocated =
-                mem::size_of_val(boxed.data.as_str()) + mem::size_of_val(&boxed.data);
+            let bytes_allocated = boxed.bytes_allocated();
             let total_bytes_allocated = bytes_allocated + self.bytes_allocated.get();
             self.bytes_allocated.replace(total_bytes_allocated);
             #[cfg(feature = "debug_log_gc")]
@@ -202,9 +201,18 @@ impl Heap {
 }
 
 #[derive(Clone, Debug)]
-pub struct Obj<T: ?Sized + 'static + Trace> {
+pub struct Obj<T: 'static + Trace> {
     marked: bool,
     data: T,
+}
+
+#[cfg(feature = "debug_log_gc")]
+impl<T> Drop for Obj<T> where T: Trace {
+    fn drop(&mut self) {
+        let ptr = self as *const Self;
+        let size = self.bytes_allocated();
+        println!("Free {:?}, size = {}, type = {}", ptr, size, std::any::type_name::<T>());
+    }
 }
 
 impl<T: Trace> HeapObj for Obj<T> {
