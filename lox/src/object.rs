@@ -124,14 +124,14 @@ impl AsMut<Value> for Upvalue {
 #[derive(Debug, Clone)]
 pub struct LoxClosure {
     pub function: Gc<LoxFun>,
-    pub upvalues: Vec<Gc<Upvalue>>,
+    pub upvalues: Box<[Gc<Upvalue>]>,
 }
 
 impl LoxClosure {
     pub fn new(function: Gc<LoxFun>) -> Self {
         Self {
             function,
-            upvalues: Vec::with_capacity(function.upvalues.len()),
+            upvalues: Box::new([]),
         }
     }
 }

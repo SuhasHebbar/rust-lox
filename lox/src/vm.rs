@@ -233,18 +233,21 @@ impl Vm {
                 Instruction::Closure(func_index) => {
                     if let Value::Function(function) = call_frame.get_value(func_index) {
                         let mut closure = self.heap.manage_gc(LoxClosure::new(function.clone()), self);
+                        let mut upvalues = Vec::with_capacity(closure.function.upvalues.len());
                         for upvalue_sim in function.upvalues.iter() {
                             match upvalue_sim {
                                 crate::object::UpvalueSim::Local(index) => {
                                     let value_ptr = &mut self.stack[call_frame.frame_index + *index as usize] as *mut Value;
-                                    closure.upvalues.push(self.capture_upvalue(value_ptr));
+                                    upvalues.push(self.capture_upvalue(value_ptr));
                                 }
                                 crate::object::UpvalueSim::Upvalue(index) => {
                                     let upvalue_ptr = call_frame.closure.upvalues[*index as usize];
-                                    closure.upvalues.push(upvalue_ptr);
+                                    upvalues.push(upvalue_ptr);
                                 }
                             }
                         }
+
+                        closure.upvalues = upvalues.into();
                         self.stack.push(Value::Closure(closure));
                     } else {
                         panic!("Non closure value loaded for Closure opcode");
