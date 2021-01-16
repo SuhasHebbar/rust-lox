@@ -109,17 +109,24 @@ impl Heap {
 
         objects.retain(|heap_obj| heap_obj.is_marked());
 
+        let mut objects_size = 0usize;
         for object in objects.iter_mut() {
             object.unmark();
+            objects_size += object.bytes_allocated();
         }
 
         let mut interned_strs = self.interned_strs.borrow_mut();
 
         interned_strs.retain(|k, v| v.is_marked());
 
+        let mut strs_size = 0;
         for (k, v) in interned_strs.iter_mut() {
             v.unmark();
+            strs_size += v.bytes_allocated();
+
         }
+
+        self.bytes_allocated.replace(strs_size + objects_size);
     }
 
     pub fn manage_gc<T: Trace>(&self, value: T, vm: &Vm) -> Gc<T> {
@@ -211,6 +218,10 @@ impl<T: Trace> HeapObj for Obj<T> {
 
     fn unmark(&mut self) {
         self.marked = false;
+    }
+
+    fn bytes_allocated(&self) -> usize {
+        self.data.bytes_allocated()
     }
 }
 
@@ -396,7 +407,7 @@ impl Borrow<str> for LoxStr {
 }
 
 impl Trace for LoxStr {
-    fn trace(&self, grey_stack: &mut GreyStack) {}
+    fn trace(&self, _grey_stack: &mut GreyStack) {}
 
     fn bytes_allocated(&self) -> usize {
         let str_size = mem::size_of_val(self.val.as_ref());
@@ -410,6 +421,8 @@ pub trait HeapObj: 'static {
     fn is_marked(&self) -> bool;
     fn mark(&mut self);
     fn unmark(&mut self);
+
+    fn bytes_allocated(&self) -> usize;
 }
 
 pub trait Trace {

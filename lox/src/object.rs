@@ -145,6 +145,9 @@ impl Trace for LoxClosure {
     }
 
     fn bytes_allocated(&self) -> usize {
-        todo!()
+        let self_size = mem::size_of::<Self>();
+        let slice_size = mem::size_of_val(self.upvalues.as_ref());
+
+        self_size + slice_size
     }
 }
