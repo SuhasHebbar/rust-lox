@@ -24,9 +24,8 @@ pub fn run_file(file_path: &str) {
 
 const HISTORY_SAVE_PATH: &str = ".lox_history";
 
+#[cfg(feature = "repl")]
 pub fn repl() {
-    #[cfg(feature = "repl")]
-    {
         use rustyline::{error::ReadlineError, Config};
         let rl_config = Config::builder()
             .history_ignore_dups(true)
@@ -57,5 +56,4 @@ pub fn repl() {
         }
 
         rl.save_history(HISTORY_SAVE_PATH).unwrap();
-    }
 }
