@@ -1,4 +1,4 @@
-use std::{fmt::{self, Formatter}, time::Instant, write};
+use std::{fmt::{self, Formatter}, mem, time::Instant, write};
 
 use fmt::Display;
 
@@ -33,6 +33,10 @@ impl LoxNativeFun {
 
 impl Trace for LoxNativeFun {
     fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
+    }
+
+    fn bytes_allocated(&self) -> usize {
+        mem::size_of::<Self>()
     }
 }
 

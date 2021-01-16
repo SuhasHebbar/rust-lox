@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::{self, Display, Formatter}, ptr::NonNull, write};
+use std::{borrow::Cow, fmt::{self, Display, Formatter}, mem, ptr::NonNull, write};
 
 use crate::{heap::{Gc, LoxStr, Trace}, native::LoxNativeFun, opcodes::{Chunk, Value}, vm::StackIndex};
 
@@ -39,6 +39,13 @@ impl Trace for LoxFun {
     fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
         self.name.mark_if_needed(grey_stack);
         self.chunk.mark_if_needed(grey_stack);    
+    }
+
+    fn bytes_allocated(&self) -> usize {
+        let self_size = mem::size_of::<Self>();
+        let upvalues_size = mem::size_of_val(self.upvalues.as_ref());
+
+        self_size + upvalues_size
     }
 }
 
@@ -92,6 +99,10 @@ impl Trace for Upvalue {
     fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
         self.as_ref().mark_if_needed(grey_stack);
     }
+
+    fn bytes_allocated(&self) -> usize {
+        mem::size_of::<Self>()
+    }
 }
 
 impl AsRef<Value> for Upvalue {
@@ -131,5 +142,9 @@ impl Trace for LoxClosure {
         for upvalue in self.upvalues.iter() {
             upvalue.mark_if_needed(grey_stack);
         }
+    }
+
+    fn bytes_allocated(&self) -> usize {
+        todo!()
     }
 }

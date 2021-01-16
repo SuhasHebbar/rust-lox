@@ -1,15 +1,8 @@
 /// Currently this is just the bare beginnings of a scaffold for the lox GC.
-use std::{
-    borrow::{Borrow, BorrowMut},
-    cell::{Cell, RefCell},
-    collections::{HashMap, HashSet},
-    fmt::{self, Display, Formatter},
-    hash::Hasher,
-    ops::{Deref, DerefMut},
-    ptr::NonNull,
-    rc::Rc,
-};
+use std::{borrow::{Borrow, BorrowMut}, cell::{Cell, RefCell}, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc, todo};
 use std::{hash::Hash, mem};
+
+use mem::size_of_val;
 
 use crate::{object, vm::Vm};
 
@@ -202,12 +195,12 @@ impl Heap {
 }
 
 #[derive(Clone, Debug)]
-pub struct Obj<T: ?Sized + 'static> {
+pub struct Obj<T: ?Sized + 'static + Trace> {
     marked: bool,
     data: T,
 }
 
-impl<T> HeapObj for Obj<T> {
+impl<T: Trace> HeapObj for Obj<T> {
     fn is_marked(&self) -> bool {
         self.marked
     }
@@ -221,7 +214,7 @@ impl<T> HeapObj for Obj<T> {
     }
 }
 
-impl<T> Obj<T> {
+impl<T: Trace> Obj<T> {
     pub fn new(data: T) -> Self {
         Self {
             marked: false,
@@ -232,7 +225,7 @@ impl<T> Obj<T> {
 
 impl<T> Hash for Obj<T>
 where
-    T: Hash,
+    T: Hash + Trace,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.data.hash(state);
@@ -404,6 +397,13 @@ impl Borrow<str> for LoxStr {
 
 impl Trace for LoxStr {
     fn trace(&self, grey_stack: &mut GreyStack) {}
+
+    fn bytes_allocated(&self) -> usize {
+        let str_size = mem::size_of_val(self.val.as_ref());
+        let box_size = mem::size_of::<LoxStr>();
+
+        str_size + box_size
+    }
 }
 
 pub trait HeapObj: 'static {
@@ -414,4 +414,6 @@ pub trait HeapObj: 'static {
 
 pub trait Trace {
     fn trace(&self, grey_stack: &mut GreyStack);
+
+    fn bytes_allocated(&self) -> usize;
 }
