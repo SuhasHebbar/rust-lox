@@ -232,7 +232,7 @@ impl Vm {
                 }
                 Instruction::Closure(func_index) => {
                     if let Value::Function(function) = call_frame.get_value(func_index) {
-                        let mut closure = self.heap.manage(LoxClosure::new(function.clone()));
+                        let mut closure = self.heap.manage_gc(LoxClosure::new(function.clone()), self);
                         for upvalue_sim in function.upvalues.iter() {
                             match upvalue_sim {
                                 crate::object::UpvalueSim::Local(index) => {
@@ -301,7 +301,7 @@ impl Vm {
             }
         }
 
-        let upvalue_ptr = self.heap.manage(Upvalue::new(value_ptr));
+        let upvalue_ptr = self.heap.manage_gc(Upvalue::new(value_ptr), self);
         self.open_upvalues.insert(insert_index, upvalue_ptr);
         return upvalue_ptr;
     }
@@ -367,7 +367,7 @@ impl Vm {
                 let mut acc = lhs.to_string();
 
                 acc = acc + rhs.as_str();
-                let string_ref = self.heap.intern_string(acc);
+                let string_ref = self.heap.intern_string_gc(acc, self);
                 res = string_ref.into();
             }
             (Value::Number(lhs), Value::Number(rhs)) => {

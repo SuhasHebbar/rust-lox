@@ -1,15 +1,20 @@
 /// Currently this is just the bare beginnings of a scaffold for the lox GC.
-use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc};
+use std::{borrow::{Borrow, BorrowMut}, cell::{Cell, RefCell}, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc};
 use std::{hash::Hash, mem};
 
 use crate::{object, vm::Vm};
 
 pub type GreyStack = Vec<&'static dyn Trace>;
 
+const GC_HEAP_GROWTH_FACTOR: usize = 2;
+const INITIAL_NEXT_GC: usize = 1024 * 1024;
+
 pub struct Heap {
     interned_strs: RefCell<HashMap<&'static LoxStr, Box<Obj<LoxStr>>>>,
     objects: RefCell<Vec<Box<dyn HeapObj>>>,
     grey_stack: RefCell<GreyStack>,
+    bytes_allocated: Cell<usize>,
+    next_gc: Cell<usize>,
 }
 
 impl Heap {
@@ -17,15 +22,34 @@ impl Heap {
         Self {
             interned_strs: RefCell::new(HashMap::new()),
             objects: RefCell::new(Vec::new()),
-            grey_stack: RefCell::new(Vec::new())
+            grey_stack: RefCell::new(Vec::new()),
+            bytes_allocated: Cell::new(0),
+            next_gc: Cell::new(INITIAL_NEXT_GC)
         }
     }
 
-    fn collect_garbage_if_needed(&self, vm: &Vm) {
+    fn collect_if_needed(&self, vm: &Vm) {
+        #[cfg(feature = "debug_stress_gc")]
+        self.collect_garbage(vm);
+
+        let total_bytes_allocated = self.bytes_allocated.get();
+        let next_gc = self.next_gc.get();
+
+        if total_bytes_allocated > next_gc {
+            self.collect_garbage(vm);
+        }
+
+    }
+
+    fn collect_garbage(&self, vm: &Vm) {
         #[cfg(feature = "debug_log_gc")]
         println!("-- gc begin");
 
-        todo!();
+        self.mark_heap(vm);
+        self.sweep_heap();
+
+        let total_bytes_allocated = self.bytes_allocated.get();
+        self.bytes_allocated.replace(total_bytes_allocated * GC_HEAP_GROWTH_FACTOR);
 
         #[cfg(feature = "debug_log_gc")]
         println!("-- gc end");
@@ -85,12 +109,12 @@ impl Heap {
     }
 
     pub fn manage_gc<T: Trace>(&self, value: T, vm: &Vm) -> Gc<T> {
-        self.collect_garbage_if_needed(vm);
+        self.collect_if_needed(vm);
         self.manage(value)
     }
 
     pub fn intern_string_gc(&self, str_ref: impl AsRef<str>, vm: &Vm) -> Gc<LoxStr> {
-        self.collect_garbage_if_needed(vm);
+        self.collect_if_needed(vm);
         self.intern_string(str_ref)
     }
 
@@ -98,11 +122,16 @@ impl Heap {
         let mut boxed = Box::new(Obj::new(value));
         let ptr = boxed.as_mut() as *mut _;
 
+        let bytes_allocated = std::mem::size_of_val(&boxed.data);
+
+        let total_bytes_allocated = bytes_allocated + self.bytes_allocated.get();
+        self.bytes_allocated.replace(total_bytes_allocated);
+
         #[cfg(feature = "debug_log_gc")]
         println!(
             "Allocate {:?}, size = {}, type = {}",
             ptr,
-            std::mem::size_of_val(boxed.as_ref()),
+            bytes_allocated,
             std::any::type_name::<T>()
         );
 
@@ -130,10 +159,24 @@ impl Heap {
         } else {
             drop(heapobj);
             drop(interned_strs);
-            let mut value = Box::new(Obj::new(string));
-            obj_ptr = value.as_mut() as *mut Obj<LoxStr>;
-            let new_key = unsafe { mem::transmute(&value.data) };
-            self.interned_strs.borrow_mut().insert(new_key, value);
+            let mut boxed = Box::new(Obj::new(string));
+            obj_ptr = boxed.as_mut() as *mut Obj<LoxStr>;
+
+
+            // Update bytes allocated
+            let bytes_allocated = mem::size_of_val(boxed.data.as_str()) + mem::size_of_val(&boxed.data);
+            let total_bytes_allocated = bytes_allocated + self.bytes_allocated.get();
+            self.bytes_allocated.replace(total_bytes_allocated);
+            #[cfg(feature = "debug_log_gc")]
+            println!(
+                "Allocate {:?}, size = {}, type = {}",
+                obj_ptr,
+                bytes_allocated,
+                "LoxStr"
+            );
+
+            let new_key = unsafe { mem::transmute(&boxed.data) };
+            self.interned_strs.borrow_mut().insert(new_key, boxed);
         }
         Gc::from(obj_ptr)
     }
