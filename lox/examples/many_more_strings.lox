@@ -1,0 +1,5 @@
+var a = "h";
+var b = a;
+for (var i = 0; i < 22; i = i + 1) {
+	b = b + b;
+}

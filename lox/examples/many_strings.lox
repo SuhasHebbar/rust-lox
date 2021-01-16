@@ -1,0 +1,6 @@
+var a = "h";
+var b = "";
+for (var i = 0; i < 100; i = i + 1) {
+	b = b + a;
+	print b;
+}

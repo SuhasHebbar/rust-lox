@@ -1,18 +1,33 @@
-var globalSet;
-var globalGet;
-
 fun main() {
-  var a = "initial";
+  var a = 0;
+  fun increment() {
+    a = a + 1;
+  }
 
-  fun set() { a = "updated"; }
-  fun get() { print a; }
+  fun get() {
+    return a;
+  }
 
-  globalSet = set;
-  globalGet = get;
+  fun method(name) {
+    if (name == "get") {
+      return get();
+    }
+
+    if (name == "increment") {
+      return increment();
+    }
+
+    print "This was hell!";
+  }
+
+  return method;
 }
 
-main();
-globalGet();
-globalGet();
-globalSet();
-globalGet();
+var method = main();
+
+print method("get");
+method("increment");
+method("increment");
+print method("get");
+method("increment");
+print method("get");
