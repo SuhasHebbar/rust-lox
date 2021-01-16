@@ -1,12 +1,19 @@
 use std::env;
 
-use lox::repl::{repl, run_file};
+use lox::repl::run_file;
 
 fn main() {
     let args: Vec<_> = env::args().collect();
 
+    let mut run_repl = false;
+
+    #[cfg(feature = "repl")]
+    {
+        run_repl = args.len() == 1
+    }
+
     if args.len() == 1 {
-        repl()
+        lox::repl::repl()
     } else {
         run_file(&args[1])
     }

@@ -2,19 +2,10 @@
 use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc};
 use std::{hash::Hash, mem};
 
-use crate::object::{LoxFun, Upvalue};
-
 pub struct Heap {
     interned_strs: RefCell<HashMap<&'static LoxStr, Box<Obj<LoxStr>>>>,
     objects: RefCell<Vec<Box<dyn HeapObj>>>,
 }
-
-// impl Drop for Heap {
-//     fn drop(&mut self) {
-//         let heap = self.interned_strs.borrow_mut();
-//         dbg!("{}\n", &*heap);
-//     }
-// }
 
 impl Heap {
     pub fn new() -> Self {

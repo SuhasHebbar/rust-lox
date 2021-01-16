@@ -1,7 +1,6 @@
+use crate::interpreter::{Interpreter, InterpreterResult};
 use std::fs::File;
 use std::io::prelude::*;
-use rustyline::{Config, error::ReadlineError};
-use crate::interpreter::{Interpreter, InterpreterResult};
 use std::process;
 
 pub fn run_file(file_path: &str) {
@@ -26,34 +25,37 @@ pub fn run_file(file_path: &str) {
 const HISTORY_SAVE_PATH: &str = ".lox_history";
 
 pub fn repl() {
-    let rl_config = Config::builder()
-        .history_ignore_dups(true)
-        .max_history_size(1000)
-        .build();
-    let mut rl = rustyline::Editor::<()>::with_config(rl_config);
+    #[cfg(feature = "repl")]
+    {
+        use rustyline::{error::ReadlineError, Config};
+        let rl_config = Config::builder()
+            .history_ignore_dups(true)
+            .max_history_size(1000)
+            .build();
+        let mut rl = rustyline::Editor::<()>::with_config(rl_config);
 
-    if rl.load_history(HISTORY_SAVE_PATH).is_err() {
-        eprintln!("Failed to find previous history.");
-    }
-
-    let mut interpreter = Interpreter::new();
-
-    loop {
-        let readline = rl.readline(">> ");
-        match readline {
-            Ok(line) => {
-                rl.add_history_entry(line.as_str());
-                println!("Printed line: {}", line);
-                interpreter.interpret(&line);
-            }
-            Err(ReadlineError::Interrupted) => {
-                println!("CTRL-C");
-                break;
-            }
-            _ => {}
+        if rl.load_history(HISTORY_SAVE_PATH).is_err() {
+            eprintln!("Failed to find previous history.");
         }
+
+        let mut interpreter = Interpreter::new();
+
+        loop {
+            let readline = rl.readline(">> ");
+            match readline {
+                Ok(line) => {
+                    rl.add_history_entry(line.as_str());
+                    println!("Printed line: {}", line);
+                    interpreter.interpret(&line);
+                }
+                Err(ReadlineError::Interrupted) => {
+                    println!("CTRL-C");
+                    break;
+                }
+                _ => {}
+            }
+        }
+
+        rl.save_history(HISTORY_SAVE_PATH).unwrap();
     }
-
-    rl.save_history(HISTORY_SAVE_PATH).unwrap();
 }
-
