@@ -1,11 +1,6 @@
 use fmt::{Display, Formatter, Debug};
-use std::{
-    convert::{TryFrom, TryInto},
-    error::Error,
-    fmt,
-};
+use std::{convert::{TryFrom, TryInto}, error::Error, fmt, todo};
 
-use crate::heap::Managed;
 
 pub type Number = f64;
 pub type ConstantIndex = u8;
@@ -19,7 +14,7 @@ trait ByteCodeEncodeDecode: Sized {
 }
 use lox_macros::ByteCodeEncodeDecode;
 
-use crate::{heap::{Gc, LoxStr}, native::LoxNativeFun, object::{LoxClosure, LoxFun}};
+use crate::{heap::{Gc, GreyStack, LoxStr}, native::LoxNativeFun, object::{LoxClosure, LoxFun}};
 
 #[derive(Debug, Clone, Copy, ByteCodeEncodeDecode)]
 pub enum Instruction {
@@ -94,12 +89,12 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn mark(&self) {
+    pub fn mark_if_needed(&self, grey_stack: &mut GreyStack) {
         match self {
-            Value::String(obj_ref) => obj_ref.mark(),
-            Value::Function(obj_ref) => obj_ref.mark(),
-            Value::NativeFunction(obj_ref) => obj_ref.mark(),
-            Value::Closure(obj_ref) => obj_ref.mark(),
+            Value::String(obj_ref) => obj_ref.mark_if_needed(grey_stack),
+            Value::Function(obj_ref) => obj_ref.mark_if_needed(grey_stack),
+            Value::NativeFunction(obj_ref) => obj_ref.mark_if_needed(grey_stack),
+            Value::Closure(obj_ref) => obj_ref.mark_if_needed(grey_stack),
             _ => {}
         }
     }
@@ -164,6 +159,12 @@ impl fmt::Display for Instruction {
 }
 
 impl Chunk {
+    pub fn mark_if_needed(&self, grey_stack: &mut GreyStack) {
+        for value in self.values.iter() {
+            value.mark_if_needed(grey_stack)
+        }
+    }
+
     pub fn new() -> Self {
         Chunk {
             code: Vec::new(),

@@ -31,7 +31,7 @@ impl Heap {
         println!("-- gc end");
     }
 
-    pub fn manage_gc<T>(&self, value: T, vm: &Vm) -> Gc<T> {
+    pub fn manage_gc<T: Trace>(&self, value: T, vm: &Vm) -> Gc<T> {
         self.collect_garbage_if_needed(vm);
         self.manage(value)
     }
@@ -41,7 +41,7 @@ impl Heap {
         self.intern_string(str_ref)
     }
 
-    pub fn manage<T>(&self, value: T) -> Gc<T> {
+    pub fn manage<T: Trace>(&self, value: T) -> Gc<T> {
         let mut boxed = Box::new(Obj::new(value));
         let ptr = boxed.as_mut() as *mut _;
 
@@ -151,11 +151,12 @@ impl<T: Trace> Gc<T> {
         self.as_obj_mut().mark();
     }
 
-    // pub fn mark_if_needed(&self, grey_stack: &mut TempRoots) {
-    //     if !self.is_marked() {
-    //         grey_stack.push()
-    //     }
-    // }
+    pub fn mark_if_needed(&self, grey_stack: &mut GreyStack) {
+        if !self.is_marked() {
+            self.mark();
+            grey_stack.push(self.get_ref());
+        }
+    }
 
     pub fn unmark(&self) {
         self.as_obj_mut().unmark();

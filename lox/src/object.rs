@@ -37,7 +37,8 @@ impl Default for LoxFun {
 
 impl Trace for LoxFun {
     fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
-        // self.name.ma
+        self.name.mark_if_needed(grey_stack);
+        self.chunk.mark_if_needed(grey_stack);    
     }
 }
 
@@ -89,7 +90,7 @@ impl Upvalue {
 
 impl Trace for Upvalue {
     fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
-        todo!()
+        self.as_ref().mark_if_needed(grey_stack);
     }
 }
 
@@ -126,6 +127,9 @@ impl LoxClosure {
 
 impl Trace for LoxClosure {
     fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
-        todo!()
+        self.function.mark_if_needed(grey_stack);
+        for upvalue in self.upvalues.iter() {
+            upvalue.mark_if_needed(grey_stack);
+        }
     }
 }
