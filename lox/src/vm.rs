@@ -1,5 +1,10 @@
-use crate::{heap::{Gc, Heap, LoxStr, Obj}, interpreter::{InterpreterResult, VmInit}, native::{ClockNative, LoxNativeFun, ValueToStrConverter}, object::{FunctionType, LoxClosure, LoxFun, Upvalue}, opcodes::{ArgCount, Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value}};
-use std::{time, todo};
+use crate::{
+    heap::{Gc, Heap, LoxStr, Obj},
+    interpreter::{InterpreterResult, VmInit},
+    native::{ClockNative, LoxNativeFun, ValueToStrConverter},
+    object::{self, FunctionType, LoxClass, LoxClosure, LoxFun, LoxInstance, Upvalue},
+    opcodes::{ArgCount, Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value},
+};
 use std::{
     collections::HashMap,
     convert::{TryFrom, TryInto},
@@ -7,6 +12,7 @@ use std::{
     mem,
     ops::{Add, Div, Mul, Sub},
 };
+use std::{time, todo};
 
 const FRAMES_MIN_SIZE: usize = 64;
 const STACK_MIN_SIZE: usize = FRAMES_MIN_SIZE * (StackIndex::MAX as usize + 1);
@@ -77,11 +83,6 @@ impl Vm {
         // borrow self down the line.
         // The Vm struct methods need to be refactored to not need this usage.
         let mut call_frame: &mut CallFrame = get_callframe(&mut self.call_frames);
-
-        #[cfg(feature = "lox_debug")]
-        {
-            // println!("{}", call_frame.get_chunk());
-        }
 
         while let Some((index, instr)) = call_frame.ip.peek() {
             let instr = *instr;
@@ -232,7 +233,8 @@ impl Vm {
                 }
                 Instruction::Closure(func_index) => {
                     if let Value::Function(function) = call_frame.get_value(func_index) {
-                        let mut closure = self.heap.manage_gc(LoxClosure::new(function.clone()), self);
+                        let mut closure =
+                            self.heap.manage_gc(LoxClosure::new(function.clone()), self);
 
                         // We push the closure here early since we will be allocating upvalues down the line
                         // which may trigger GC and Deallocate the closure.
@@ -242,7 +244,9 @@ impl Vm {
                         for upvalue_sim in function.upvalues.iter() {
                             match upvalue_sim {
                                 crate::object::UpvalueSim::Local(index) => {
-                                    let value_ptr = &mut self.stack[call_frame.frame_index + *index as usize] as *mut Value;
+                                    let value_ptr = &mut self.stack
+                                        [call_frame.frame_index + *index as usize]
+                                        as *mut Value;
                                     upvalues.push(self.capture_upvalue(value_ptr));
                                 }
                                 crate::object::UpvalueSim::Upvalue(index) => {
@@ -269,6 +273,45 @@ impl Vm {
                 Instruction::CloseUpvalue => {
                     self.close_upvalues(self.stack.len() - 1);
                     self.stack.pop();
+                }
+                Instruction::Class(name_in) => {
+                    let class_name = call_frame.get_value(name_in).unwrap_string();
+                    let class = self.heap.manage_gc(LoxClass::new(class_name), self);
+                    self.stack.push(Value::Class(class));
+                }
+                Instruction::GetProperty(prop_in) => {
+                    let prop_name = call_frame.get_value(prop_in).unwrap_string();
+                    let instance_value = self.peek(0);
+                    if let Value::Instance(instance) = instance_value {
+                        let field_val = instance.fields.get(&prop_name);
+                        if let Some(field_val) = field_val {
+                            let field_val = *field_val;
+                            self.stack.pop();
+                            self.stack.push(field_val);
+                        } else {
+                            self.runtime_error(format!("Undefined property '{}'.", prop_name));
+                            return InterpreterResult::RuntimeError;
+                        }
+                    } else {
+                        self.runtime_error("Only instances have properties.");
+                        return InterpreterResult::RuntimeError;
+                    }
+                }
+                Instruction::SetProperty(prop_in) => {
+                    let prop_name = call_frame.get_value(prop_in).unwrap_string();
+
+                    let instance_value= *self.peek(1);
+                    let set_value = *self.peek(0);
+
+                    if let Value::Instance(mut instance) = instance_value {
+                        instance.fields.insert(prop_name, set_value);
+
+                    } else {
+                        self.runtime_error("Only instances have fields.");
+                        return InterpreterResult::RuntimeError;
+                    }
+                    
+                    todo!()
                 }
             };
             call_frame.ip.next();
@@ -327,6 +370,16 @@ impl Vm {
                 self.call_frames.last_mut().unwrap().ip.next();
                 true
             }
+            Value::Class(class) => {
+                let instance = self.heap.manage_gc(LoxInstance::new(class), self);
+
+                for _ in 0..=arg_count {
+                    self.stack.pop();
+                }
+
+                self.stack.push(Value::Instance(instance));
+                true
+            }
             _ => {
                 self.runtime_error("Can only call functions and classes.");
                 false
@@ -340,8 +393,14 @@ impl Vm {
                 "Expected {} arguments but got {}.",
                 closure_ptr.function.arity, arg_count
             ));
-            println!("The pointer value of closure is {:?}", closure_ptr.as_obj() as *const _);
-            println!("The pointer value of function is {:?}", closure_ptr.function.as_obj() as *const _);
+            println!(
+                "The pointer value of closure is {:?}",
+                closure_ptr.as_obj() as *const _
+            );
+            println!(
+                "The pointer value of function is {:?}",
+                closure_ptr.function.as_obj() as *const _
+            );
             return false;
         }
         let cursor = get_cursor(closure_ptr.function.chunk.instr_iter());

@@ -145,6 +145,12 @@ const OR_RULE: ParseRule = ParseRule {
     curr_prec: Precedence::Comparison,
 };
 
+const DOT_RULE: ParseRule = ParseRule {
+    prefix: None,
+    infix: Some(&|this: &mut Compiler, assign: bool| this.dot(assign)),
+    curr_prec: Precedence::Comparison,
+};
+
 pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
     match token_type {
         TokenType::LeftParen => &LEFT_PAREN_RULE,
@@ -162,6 +168,7 @@ pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
         TokenType::Identifier => &VARIABLE_RULE,
         TokenType::And => &AND_RULE,
         TokenType::Or => &OR_RULE,
+        TokenType::Dot => &DOT_RULE,
         _ => &PLACEHOLDER_PARSERULE,
     }
 }

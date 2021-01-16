@@ -14,7 +14,7 @@ trait ByteCodeEncodeDecode: Sized {
 }
 use lox_macros::ByteCodeEncodeDecode;
 
-use crate::{heap::{Gc, GreyStack, LoxStr}, native::LoxNativeFun, object::{LoxClosure, LoxFun}};
+use crate::{heap::{Gc, GreyStack, LoxStr}, native::LoxNativeFun, object::{LoxClass, LoxClosure, LoxFun, LoxInstance}};
 
 #[derive(Debug, Clone, Copy, ByteCodeEncodeDecode)]
 pub enum Instruction {
@@ -58,6 +58,11 @@ pub enum Instruction {
     GetUpvalue(UpValueIndex),
     SetUpvalue(UpValueIndex),
     CloseUpvalue,
+
+    Class(ConstantIndex),
+
+    GetProperty(ConstantIndex),
+    SetProperty(ConstantIndex)
 }
 
 impl Instruction {
@@ -86,6 +91,8 @@ pub enum Value {
     Function(Gc<LoxFun>),
     NativeFunction(Gc<LoxNativeFun>),
     Closure(Gc<LoxClosure>),
+    Class(Gc<LoxClass>),
+    Instance(Gc<LoxInstance>)
 }
 
 impl Value {
@@ -96,6 +103,15 @@ impl Value {
             Value::NativeFunction(obj_ref) => obj_ref.mark_if_needed(grey_stack),
             Value::Closure(obj_ref) => obj_ref.mark_if_needed(grey_stack),
             _ => {}
+        }
+    }
+
+    /// To extract a string from a value known to be a string.
+    pub fn unwrap_string(&self) -> Gc<LoxStr> {
+        if let Value::String(string) = self {
+            *string
+        } else {
+            unreachable!()
         }
     }
 }
@@ -148,6 +164,8 @@ impl fmt::Display for Value {
             Value::Function(lox_fun) => write!(f, "{}", lox_fun),
             Value::NativeFunction(lox_fun) => write!(f, "{}", lox_fun),
             Value::Closure(lox_closure) =>write!(f, "{}", lox_closure.function),
+            Value::Class(class) => write!(f, "{:?}", class),
+            Value::Instance(instance) => write!(f, "{:?}", instance),
         }
     }
 }

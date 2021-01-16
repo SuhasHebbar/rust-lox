@@ -326,6 +326,18 @@ impl<'a> Compiler<'a> {
         self.patch_fwd_jump(jmp_patch_loc);
     }
 
+    pub fn dot(&mut self, assign: bool) {
+        self.consume(TokenType::Identifier, "Expect property name after '.'.");
+        let rhs_in = self.make_identifier();
+
+        if assign && self.match_tt(TokenType::Equal) {
+            self.expression();
+            self.emit_instruction(Instruction::SetProperty(rhs_in));
+        } else {
+            self.emit_instruction(Instruction::GetProperty(rhs_in));
+        }
+    }
+
     pub fn variable(&mut self, assign: bool) {
         let arg = self.resolve_local();
 
@@ -465,6 +477,8 @@ impl<'a> Compiler<'a> {
             self.var_declaration()
         } else if self.match_tt(TokenType::Fun) {
             self.fun_declaration();
+        } else if self.match_tt(TokenType::Class) {
+            self.class_declaration();
         } else {
             self.statement();
         }
@@ -472,6 +486,20 @@ impl<'a> Compiler<'a> {
         if cctx!(self).errh.panic_mode {
             self.synchronize();
         }
+    }
+
+    fn class_declaration(&mut self) {
+        self.consume(TokenType::Identifier, "Expect class name.");
+        let name_in = self.make_identifier();
+        self.declare_variable();
+
+        self.emit_instruction(Instruction::Class(name_in));
+        self.define_variable(name_in);
+
+        self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
+        self.consume(TokenType::RightBrace, "Expect '}' after class body.");
+
+        todo!()
     }
 
     pub fn var_declaration(&mut self) {
