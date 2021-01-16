@@ -7,8 +7,14 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rustyline = "6.3.0"
+rustyline = { version = "6.3.0", optional = true }
 lox-macros = {path = "../lox-macros"}
 
 [features]
 lox_debug = []
+repl = ["rustyline"]
+debug_stress_gc = []
+debug_log_gc = []
+debug_log_allocation = ["debug_log_gc"]
+
+# default = ["debug_log_gc", "debug_stress_gc"]
