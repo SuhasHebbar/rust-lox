@@ -20,11 +20,11 @@ type Globals = HashMap<Gc<LoxStr>, Value>;
 
 pub struct Vm {
     heap: Heap,
-    stack: Stack,
-    call_frames: Vec<CallFrame>,
-    globals: Globals,
+    pub stack: Stack,
+    pub call_frames: Vec<CallFrame>,
+    pub globals: Globals,
     had_runtime_error: bool,
-    open_upvalues: Vec<Gc<Upvalue>>,
+    pub open_upvalues: Vec<Gc<Upvalue>>,
 }
 
 impl Vm {
@@ -458,8 +458,8 @@ fn get_cursor(chunk_iter: ChunkIterator) -> Curr {
     unsafe { mem::transmute(chunk_iter.peekable()) }
 }
 
-struct CallFrame {
-    closure: Gc<LoxClosure>,
+pub struct CallFrame {
+    pub closure: Gc<LoxClosure>,
     ip: Curr,
     frame_index: FrameIndex,
 }

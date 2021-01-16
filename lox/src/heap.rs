@@ -2,14 +2,14 @@
 use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc};
 use std::{hash::Hash, mem};
 
-use crate::vm::Vm;
+use crate::{object, vm::Vm};
 
 pub type GreyStack = Vec<&'static dyn Trace>;
 
 pub struct Heap {
     interned_strs: RefCell<HashMap<&'static LoxStr, Box<Obj<LoxStr>>>>,
     objects: RefCell<Vec<Box<dyn HeapObj>>>,
-    temp_roots: RefCell<GreyStack>,
+    grey_stack: RefCell<GreyStack>,
 }
 
 impl Heap {
@@ -17,7 +17,7 @@ impl Heap {
         Self {
             interned_strs: RefCell::new(HashMap::new()),
             objects: RefCell::new(Vec::new()),
-            temp_roots: RefCell::new(Vec::new())
+            grey_stack: RefCell::new(Vec::new())
         }
     }
 
@@ -29,6 +29,59 @@ impl Heap {
 
         #[cfg(feature = "debug_log_gc")]
         println!("-- gc end");
+    }
+
+    fn mark_roots(&self, vm: &Vm) {
+        let mut grey_stack_borrow = self.grey_stack.borrow_mut();
+        let grey_stack = grey_stack_borrow.as_mut();
+
+        for call_frame in vm.call_frames.iter() {
+            call_frame.closure.mark_if_needed(grey_stack);
+        }
+
+        for upvalue in vm.open_upvalues.iter() {
+            upvalue.mark_if_needed(grey_stack);
+        }
+
+        for value in vm.stack.iter() {
+            value.mark_if_needed(grey_stack);
+        }
+
+        for (key, value) in vm.globals.iter() {
+            key.mark_if_needed(grey_stack);
+            value.mark_if_needed(grey_stack);
+        }
+
+    }
+
+    fn mark_heap(&self, vm: &Vm) {
+        self.mark_roots(vm);
+
+        let mut grey_stack_borrow = self.grey_stack.borrow_mut();
+        let grey_stack: &mut GreyStack = grey_stack_borrow.as_mut();
+
+        while grey_stack.len() > 0 {
+            let marked = grey_stack.pop().unwrap();
+            marked.trace(grey_stack);
+        }
+    }
+
+    fn sweep_heap(&self) {
+        let mut objects = self.objects.borrow_mut();
+
+        objects.retain(|heap_obj| heap_obj.is_marked());
+
+        for object in objects.iter_mut() {
+            object.unmark();
+        }
+
+        let mut interned_strs = self.interned_strs.borrow_mut();
+
+        interned_strs.retain(|k, v| v.is_marked());
+
+        for (k, v) in interned_strs.iter_mut() {
+            v.unmark();
+        }
     }
 
     pub fn manage_gc<T: Trace>(&self, value: T, vm: &Vm) -> Gc<T> {
