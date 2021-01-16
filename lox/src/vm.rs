@@ -233,6 +233,11 @@ impl Vm {
                 Instruction::Closure(func_index) => {
                     if let Value::Function(function) = call_frame.get_value(func_index) {
                         let mut closure = self.heap.manage_gc(LoxClosure::new(function.clone()), self);
+
+                        // We push the closure here early since we will be allocating upvalues down the line
+                        // which may trigger GC and Deallocate the closure.
+                        self.stack.push(Value::Closure(closure));
+
                         let mut upvalues = Vec::with_capacity(closure.function.upvalues.len());
                         for upvalue_sim in function.upvalues.iter() {
                             match upvalue_sim {
@@ -248,7 +253,6 @@ impl Vm {
                         }
 
                         closure.upvalues = upvalues.into();
-                        self.stack.push(Value::Closure(closure));
                     } else {
                         panic!("Non closure value loaded for Closure opcode");
                     }
@@ -336,6 +340,8 @@ impl Vm {
                 "Expected {} arguments but got {}.",
                 closure_ptr.function.arity, arg_count
             ));
+            println!("The pointer value of closure is {:?}", closure_ptr.as_obj() as *const _);
+            println!("The pointer value of function is {:?}", closure_ptr.function.as_obj() as *const _);
             return false;
         }
         let cursor = get_cursor(closure_ptr.function.chunk.instr_iter());
