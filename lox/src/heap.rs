@@ -1,5 +1,14 @@
 /// Currently this is just the bare beginnings of a scaffold for the lox GC.
-use std::{borrow::{Borrow, BorrowMut}, cell::{Cell, RefCell}, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc};
+use std::{
+    borrow::{Borrow, BorrowMut},
+    cell::{Cell, RefCell},
+    collections::{HashMap, HashSet},
+    fmt::{self, Display, Formatter},
+    hash::Hasher,
+    ops::{Deref, DerefMut},
+    ptr::NonNull,
+    rc::Rc,
+};
 use std::{hash::Hash, mem};
 
 use crate::{object, vm::Vm};
@@ -24,7 +33,7 @@ impl Heap {
             objects: RefCell::new(Vec::new()),
             grey_stack: RefCell::new(Vec::new()),
             bytes_allocated: Cell::new(0),
-            next_gc: Cell::new(INITIAL_NEXT_GC)
+            next_gc: Cell::new(INITIAL_NEXT_GC),
         }
     }
 
@@ -38,21 +47,34 @@ impl Heap {
         if total_bytes_allocated > next_gc {
             self.collect_garbage(vm);
         }
-
     }
 
     fn collect_garbage(&self, vm: &Vm) {
+        let bytes_allocated_prev: usize;
         #[cfg(feature = "debug_log_gc")]
-        println!("-- gc begin");
+        {
+            println!("-- gc begin");
+            bytes_allocated_prev = self.bytes_allocated.get();
+        }
 
         self.mark_heap(vm);
         self.sweep_heap();
 
-        let total_bytes_allocated = self.bytes_allocated.get();
-        self.bytes_allocated.replace(total_bytes_allocated * GC_HEAP_GROWTH_FACTOR);
+        let next_gc = self.bytes_allocated.get() * GC_HEAP_GROWTH_FACTOR;
+        self.next_gc.replace(next_gc);
 
         #[cfg(feature = "debug_log_gc")]
-        println!("-- gc end");
+        {
+            println!("-- gc end");
+            let curr_allocated = self.bytes_allocated.get();
+            println!(
+                "   Collected {} bytes (from {} to {}). Next at {}",
+                curr_allocated - bytes_allocated_prev,
+                bytes_allocated_prev,
+                curr_allocated,
+                next_gc
+            );
+        }
     }
 
     fn mark_roots(&self, vm: &Vm) {
@@ -75,7 +97,6 @@ impl Heap {
             key.mark_if_needed(grey_stack);
             value.mark_if_needed(grey_stack);
         }
-
     }
 
     fn mark_heap(&self, vm: &Vm) {
@@ -162,17 +183,15 @@ impl Heap {
             let mut boxed = Box::new(Obj::new(string));
             obj_ptr = boxed.as_mut() as *mut Obj<LoxStr>;
 
-
             // Update bytes allocated
-            let bytes_allocated = mem::size_of_val(boxed.data.as_str()) + mem::size_of_val(&boxed.data);
+            let bytes_allocated =
+                mem::size_of_val(boxed.data.as_str()) + mem::size_of_val(&boxed.data);
             let total_bytes_allocated = bytes_allocated + self.bytes_allocated.get();
             self.bytes_allocated.replace(total_bytes_allocated);
             #[cfg(feature = "debug_log_gc")]
             println!(
                 "Allocate {:?}, size = {}, type = {}",
-                obj_ptr,
-                bytes_allocated,
-                "LoxStr"
+                obj_ptr, bytes_allocated, "LoxStr"
             );
 
             let new_key = unsafe { mem::transmute(&boxed.data) };
@@ -384,8 +403,7 @@ impl Borrow<str> for LoxStr {
 }
 
 impl Trace for LoxStr {
-    fn trace(&self, grey_stack: &mut GreyStack) {
-    }
+    fn trace(&self, grey_stack: &mut GreyStack) {}
 }
 
 pub trait HeapObj: 'static {
@@ -397,4 +415,3 @@ pub trait HeapObj: 'static {
 pub trait Trace {
     fn trace(&self, grey_stack: &mut GreyStack);
 }
-
