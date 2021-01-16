@@ -2,7 +2,7 @@ use std::{fmt::{self, Formatter}, time::Instant, write};
 
 use fmt::Display;
 
-use crate::{heap::Heap, opcodes::{ArgCount, Value}};
+use crate::{heap::{Heap, Trace}, opcodes::{ArgCount, Value}};
 
 // pub fn clock_native(arg_count: ArgCount, args: &[Value]) -> Value {
 //     Value::Number(program_start.elapsed().as_secs_f64())
@@ -28,6 +28,11 @@ impl LoxNativeFun {
         Self {
             callable: Box::new(callable)
         }
+    }
+}
+
+impl Trace for LoxNativeFun {
+    fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
     }
 }
 

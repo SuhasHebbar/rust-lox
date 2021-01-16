@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt::{self, Display, Formatter}, ptr::NonNull, write};
 
-use crate::{heap::{Gc, LoxStr}, opcodes::{Chunk, Value}, vm::StackIndex};
+use crate::{heap::{Gc, LoxStr, Trace}, native::LoxNativeFun, opcodes::{Chunk, Value}, vm::StackIndex};
 
 
 pub type Arity = i32;
@@ -32,6 +32,12 @@ impl Default for LoxFun {
             arity: 0,
             upvalues: Box::new([])
         }
+    }
+}
+
+impl Trace for LoxFun {
+    fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
+        // self.name.ma
     }
 }
 
@@ -81,7 +87,11 @@ impl Upvalue {
     }
 }
 
-// impl AsPtr
+impl Trace for Upvalue {
+    fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
+        todo!()
+    }
+}
 
 impl AsRef<Value> for Upvalue {
     fn as_ref(&self) -> &Value {
@@ -111,5 +121,11 @@ impl LoxClosure {
             function,
             upvalues: Vec::with_capacity(function.upvalues.len()),
         }
+    }
+}
+
+impl Trace for LoxClosure {
+    fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
+        todo!()
     }
 }

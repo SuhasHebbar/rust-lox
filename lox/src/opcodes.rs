@@ -5,6 +5,8 @@ use std::{
     fmt,
 };
 
+use crate::heap::Managed;
+
 pub type Number = f64;
 pub type ConstantIndex = u8;
 pub type ByteCodeOffset = u16;
@@ -89,6 +91,18 @@ pub enum Value {
     Function(Gc<LoxFun>),
     NativeFunction(Gc<LoxNativeFun>),
     Closure(Gc<LoxClosure>),
+}
+
+impl Value {
+    pub fn mark(&self) {
+        match self {
+            Value::String(obj_ref) => obj_ref.mark(),
+            Value::Function(obj_ref) => obj_ref.mark(),
+            Value::NativeFunction(obj_ref) => obj_ref.mark(),
+            Value::Closure(obj_ref) => obj_ref.mark(),
+            _ => {}
+        }
+    }
 }
 
 impl From<Number> for Value {

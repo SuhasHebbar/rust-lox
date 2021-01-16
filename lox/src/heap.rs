@@ -2,22 +2,57 @@
 use std::{borrow::{Borrow, BorrowMut}, cell::RefCell, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc};
 use std::{hash::Hash, mem};
 
+use crate::vm::Vm;
+
+pub type GreyStack = Vec<&'static dyn Trace>;
+
 pub struct Heap {
     interned_strs: RefCell<HashMap<&'static LoxStr, Box<Obj<LoxStr>>>>,
     objects: RefCell<Vec<Box<dyn HeapObj>>>,
+    temp_roots: RefCell<GreyStack>,
 }
 
 impl Heap {
     pub fn new() -> Self {
         Self {
             interned_strs: RefCell::new(HashMap::new()),
-            objects: RefCell::new(Vec::new())
+            objects: RefCell::new(Vec::new()),
+            temp_roots: RefCell::new(Vec::new())
         }
+    }
+
+    fn collect_garbage_if_needed(&self, vm: &Vm) {
+        #[cfg(feature = "debug_log_gc")]
+        println!("-- gc begin");
+
+        todo!();
+
+        #[cfg(feature = "debug_log_gc")]
+        println!("-- gc end");
+    }
+
+    pub fn manage_gc<T>(&self, value: T, vm: &Vm) -> Gc<T> {
+        self.collect_garbage_if_needed(vm);
+        self.manage(value)
+    }
+
+    pub fn intern_string_gc(&self, str_ref: impl AsRef<str>, vm: &Vm) -> Gc<LoxStr> {
+        self.collect_garbage_if_needed(vm);
+        self.intern_string(str_ref)
     }
 
     pub fn manage<T>(&self, value: T) -> Gc<T> {
         let mut boxed = Box::new(Obj::new(value));
         let ptr = boxed.as_mut() as *mut _;
+
+        #[cfg(feature = "debug_log_gc")]
+        println!(
+            "Allocate {:?}, size = {}, type = {}",
+            ptr,
+            std::mem::size_of_val(boxed.as_ref()),
+            std::any::type_name::<T>()
+        );
+
         self.objects.borrow_mut().push(boxed);
         Gc::from(ptr)
     }
@@ -53,59 +88,99 @@ impl Heap {
 
 #[derive(Clone, Debug)]
 pub struct Obj<T: ?Sized + 'static> {
+    marked: bool,
     data: T,
 }
 
-impl<T> HeapObj for Obj<T> {}
+impl<T> HeapObj for Obj<T> {
+    fn is_marked(&self) -> bool {
+        self.marked
+    }
 
-impl<T> Obj<T> {
-    pub fn new(data: T) -> Self {
-        Self { data }
+    fn mark(&mut self) {
+        self.marked = true;
+    }
+
+    fn unmark(&mut self) {
+        self.marked = false;
     }
 }
 
-impl<T> Hash for Obj<T> where T: Hash {
+impl<T> Obj<T> {
+    pub fn new(data: T) -> Self {
+        Self {
+            marked: false,
+            data,
+        }
+    }
+}
+
+impl<T> Hash for Obj<T>
+where
+    T: Hash,
+{
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.data.hash(state);
     }
 }
 
 #[derive(Debug, Hash, PartialEq, Eq)]
-pub struct Gc<T: 'static> {
-    ptr: NonNull<Obj<T>>,
+pub struct Gc<T: 'static + Trace> {
+    ptr: *mut Obj<T>,
 }
 
-impl<T> Copy for Gc<T> {}
-impl<T> Clone for Gc<T> {
+impl<T: Trace> Copy for Gc<T> {}
+impl<T: Trace> Clone for Gc<T> {
     fn clone(&self) -> Self {
         *self
     }
 }
 
-impl<T> Gc<T> {
+impl<T: Trace> Gc<T> {
     pub fn dangling() -> Self {
         Self {
-            ptr: NonNull::dangling()
+            ptr: 0 as *mut Obj<T>,
         }
     }
 
-    fn as_obj(&self) -> &Obj<T> {
-        unsafe { &self.ptr.as_ref() }
+    pub fn is_marked(&self) -> bool {
+        self.as_obj().is_marked()
     }
 
-    fn as_obj_mut(&mut self) -> &mut Obj<T> {
-        unsafe { self.ptr.as_mut() }
+    pub fn mark(&self) {
+        self.as_obj_mut().mark();
+    }
+
+    // pub fn mark_if_needed(&self, grey_stack: &mut TempRoots) {
+    //     if !self.is_marked() {
+    //         grey_stack.push()
+    //     }
+    // }
+
+    pub fn unmark(&self) {
+        self.as_obj_mut().unmark();
+    }
+
+    pub fn as_obj(&self) -> &'static Obj<T> {
+        unsafe { &*self.ptr }
+    }
+
+    pub fn as_obj_mut(&self) -> &'static mut Obj<T> {
+        unsafe { &mut *self.ptr }
+    }
+
+    pub fn get_ref(&self) -> &'static T {
+        &self.as_obj().data
     }
 }
 
-impl<T> From<*mut Obj<T>> for Gc<T> {
+impl<T: Trace> From<*mut Obj<T>> for Gc<T> {
     fn from(val: *mut Obj<T>) -> Self {
-        let ptr = unsafe { NonNull::new_unchecked(val) };
-        Self { ptr }
+        Self { ptr: val }
     }
 }
 
-impl<T> Deref for Gc<T> {
+impl<T: Trace> Deref for Gc<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -113,40 +188,39 @@ impl<T> Deref for Gc<T> {
     }
 }
 
-impl<T> DerefMut for Gc<T> {
+impl<T: Trace> DerefMut for Gc<T> {
     fn deref_mut(&mut self) -> &mut <Self as Deref>::Target {
         &mut self.as_obj_mut().data
     }
 }
 
-impl<T> Borrow<T> for Gc<T> {
+impl<T: Trace> Borrow<T> for Gc<T> {
     fn borrow(&self) -> &T {
         &self.as_obj().data
     }
 }
 
-impl<T> BorrowMut<T> for Gc<T> {
+impl<T: Trace> BorrowMut<T> for Gc<T> {
     fn borrow_mut(&mut self) -> &mut T {
         &mut self.as_obj_mut().data
     }
 }
 
-impl<T> AsRef<T> for Gc<T> {
+impl<T: Trace> AsRef<T> for Gc<T> {
     fn as_ref(&self) -> &T {
         &self.as_obj().data
     }
 }
 
-impl<T> AsMut<T> for Gc<T> {
+impl<T: Trace> AsMut<T> for Gc<T> {
     fn as_mut(&mut self) -> &mut T {
         &mut self.as_obj_mut().data
     }
 }
 
-
 impl<T> Display for Gc<T>
 where
-    T: Display,
+    T: Display + Trace,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.as_ref().fmt(f)
@@ -212,5 +286,18 @@ impl Borrow<str> for LoxStr {
     }
 }
 
-trait HeapObj: 'static {
+impl Trace for LoxStr {
+    fn trace(&self, grey_stack: &mut GreyStack) {
+    }
 }
+
+pub trait HeapObj: 'static {
+    fn is_marked(&self) -> bool;
+    fn mark(&mut self);
+    fn unmark(&mut self);
+}
+
+pub trait Trace {
+    fn trace(&self, grey_stack: &mut GreyStack);
+}
+
