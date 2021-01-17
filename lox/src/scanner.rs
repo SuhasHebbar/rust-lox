@@ -339,7 +339,7 @@ fn identifier_type(ident: &str) -> TokenType {
 
     match c {
         'a' => check_match(remaining, "nd", TokenType::And),
-        'c' => check_match(remaining, "omma", TokenType::Comma),
+        'c' => check_match(remaining, "lass", TokenType::Class),
         'e' => check_match(remaining, "lse", TokenType::Else),
         'i' => check_match(remaining, "f", TokenType::If),
         'n' => check_match(remaining, "il", TokenType::Nil),

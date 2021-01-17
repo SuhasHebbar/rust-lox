@@ -148,7 +148,7 @@ const OR_RULE: ParseRule = ParseRule {
 const DOT_RULE: ParseRule = ParseRule {
     prefix: None,
     infix: Some(&|this: &mut Compiler, assign: bool| this.dot(assign)),
-    curr_prec: Precedence::Comparison,
+    curr_prec: Precedence::Call,
 };
 
 pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {

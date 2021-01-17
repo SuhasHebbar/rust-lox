@@ -498,8 +498,6 @@ impl<'a> Compiler<'a> {
 
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
         self.consume(TokenType::RightBrace, "Expect '}' after class body.");
-
-        todo!()
     }
 
     pub fn var_declaration(&mut self) {

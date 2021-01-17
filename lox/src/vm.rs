@@ -305,13 +305,14 @@ impl Vm {
 
                     if let Value::Instance(mut instance) = instance_value {
                         instance.fields.insert(prop_name, set_value);
+                        self.stack.pop();
+                        self.stack.pop();
+                        self.stack.push(set_value);
 
                     } else {
                         self.runtime_error("Only instances have fields.");
                         return InterpreterResult::RuntimeError;
                     }
-                    
-                    todo!()
                 }
             };
             call_frame.ip.next();
@@ -378,6 +379,10 @@ impl Vm {
                 }
 
                 self.stack.push(Value::Instance(instance));
+
+                // Since we skip ip.next after calls we need to add call ip.next for native calls ourselves.
+                self.call_frames.last_mut().unwrap().ip.next();
+
                 true
             }
             _ => {
