@@ -148,7 +148,7 @@ impl Heap {
         let total_bytes_allocated = bytes_allocated + self.bytes_allocated.get();
         self.bytes_allocated.replace(total_bytes_allocated);
 
-        #[cfg(feature = "debug_log_gc")]
+        #[cfg(feature = "debug_log_allocation")]
         println!(
             "Allocate {:?}, size = {}, type = {}",
             ptr,
@@ -187,7 +187,7 @@ impl Heap {
             let bytes_allocated = boxed.bytes_allocated();
             let total_bytes_allocated = bytes_allocated + self.bytes_allocated.get();
             self.bytes_allocated.replace(total_bytes_allocated);
-            #[cfg(feature = "debug_log_gc")]
+            #[cfg(feature = "debug_log_allocation")]
             println!(
                 "Allocate {:?}, size = {}, type = {}",
                 obj_ptr, bytes_allocated, "LoxStr"
@@ -206,7 +206,7 @@ pub struct Obj<T: 'static + Trace> {
     data: T,
 }
 
-#[cfg(feature = "debug_log_gc")]
+#[cfg(feature = "debug_log_allocation")]
 impl<T> Drop for Obj<T> where T: Trace {
     fn drop(&mut self) {
         let ptr = self as *const Self;
