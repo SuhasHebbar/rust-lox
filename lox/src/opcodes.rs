@@ -102,6 +102,8 @@ impl Value {
             Value::Function(obj_ref) => obj_ref.mark_if_needed(grey_stack),
             Value::NativeFunction(obj_ref) => obj_ref.mark_if_needed(grey_stack),
             Value::Closure(obj_ref) => obj_ref.mark_if_needed(grey_stack),
+            Value::Class(class) => class.mark_if_needed(grey_stack),
+            Value::Instance(instance) => instance.mark_if_needed(grey_stack),
             _ => {}
         }
     }
