@@ -300,15 +300,17 @@ impl Vm {
                 Instruction::SetProperty(prop_in) => {
                     let prop_name = call_frame.get_value(prop_in).unwrap_string();
 
-                    let instance_value= *self.peek(1);
+                    let instance_value = *self.peek(1);
                     let set_value = *self.peek(0);
 
                     if let Value::Instance(mut instance) = instance_value {
-                        instance.fields.insert(prop_name, set_value);
+                        self.heap.update_allocation(instance, move || {
+                            instance.fields.insert(prop_name, set_value);
+                        }, self);
+                        
                         self.stack.pop();
                         self.stack.pop();
                         self.stack.push(set_value);
-
                     } else {
                         self.runtime_error("Only instances have fields.");
                         return InterpreterResult::RuntimeError;

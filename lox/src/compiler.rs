@@ -44,7 +44,7 @@ impl<'a> Compiler<'a> {
         let scanner = Scanner::new(src);
         let heap = Heap::new();
         let empty_string = heap.intern_string("");
-        let mut ctx = CompilerContext::new(FunctionType::Script, empty_string);
+        let ctx = CompilerContext::new(FunctionType::Script, empty_string);
 
         Compiler {
             scanner,

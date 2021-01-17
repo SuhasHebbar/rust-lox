@@ -198,6 +198,19 @@ impl Heap {
         }
         Gc::from(obj_ptr)
     }
+
+    // Some allocated objects may grow in size in response to certain actions. For example setting a field
+    // will grow the hashmap used. Any action performed here should keep in mind that call this function may trigger the GC.
+    pub fn update_allocation<T: Trace>(&self, obj: Gc<T>, mut action: impl FnMut(), vm: &Vm) {
+        let curr_size = obj.bytes_allocated();
+        action();
+        let new_size = obj.bytes_allocated();
+
+        let new_bytes_allocated = self.bytes_allocated.get() + new_size - curr_size;
+        self.bytes_allocated.replace(new_bytes_allocated);
+
+        self.collect_if_needed(vm);
+    }
 }
 
 #[derive(Clone, Debug)]
