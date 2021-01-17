@@ -21,6 +21,6 @@ mod test {
 
     #[test]
     fn main_test() {
-        run_file("./lox/examples/basic_classes.lox");
+        run_file("./lox/examples/class_gc.lox");
     }
 }

@@ -787,6 +787,7 @@ impl<'a> Compiler<'a> {
             prefix_fn(self, can_assign);
         } else {
             self.error_at_previous("Unexpected expression.");
+            self.advance();
             return;
         }
 
