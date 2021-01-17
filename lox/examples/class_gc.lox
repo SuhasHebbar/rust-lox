@@ -1,0 +1,11 @@
+class Test {}
+
+var test = Test();
+
+for (var i = 0; i < 18000; i = i + 1) {
+	class Meow {}
+
+	var meow = Meow();
+
+	test.meow = meow;
+}
