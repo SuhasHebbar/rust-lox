@@ -412,6 +412,10 @@ impl Vm {
                     self.runtime_error(format!("Expected 0 arguments but got {}", arg_count));
                     false
                 } else {
+
+                    // Since we skip ip.next after calls we need to add call ip.next for native calls ourselves.
+                    self.call_frames.last_mut().unwrap().ip.next();
+                    
                     true
                 }
             }
