@@ -333,6 +333,15 @@ impl Vm {
                     let method_name = call_frame.get_value(name_in).unwrap_string();
                     self.define_method(method_name);
                 }
+                Instruction::Invoke(name_in, arg_count) => {
+                    let method_name = call_frame.get_value(name_in).unwrap_string();
+                    if !self.invoke(method_name, arg_count) {
+                        return InterpreterResult::RuntimeError;
+                    }
+
+                    call_frame = get_callframe(&mut self.call_frames);
+                    continue;
+                }
             };
             call_frame.ip.next();
 
@@ -425,14 +434,6 @@ impl Vm {
                 "Expected {} arguments but got {}.",
                 closure_ptr.function.arity, arg_count
             ));
-            println!(
-                "The pointer value of closure is {:?}",
-                closure_ptr.as_obj() as *const _
-            );
-            println!(
-                "The pointer value of function is {:?}",
-                closure_ptr.function.as_obj() as *const _
-            );
             return false;
         }
         let cursor = get_cursor(closure_ptr.function.chunk.instr_iter());
@@ -546,6 +547,34 @@ impl Vm {
             self.runtime_error(format!("Undefined property {}", method_name));
             false
         }
+    }
+
+    fn invoke(&mut self, method_name: Gc<LoxStr>, arg_count: ArgCount) -> bool {
+        if let Value::Instance(instance) = *self.peek(arg_count as usize) {
+            if let Some(field_val) = instance.fields.get(&method_name) {
+                let len = self.stack.len();
+                let field_val = *field_val;
+
+                self.stack[len - 1 - arg_count as usize] = field_val;
+                return self.call_value(field_val, arg_count);
+            }
+
+            return self.invoke_from_class(instance.class, method_name, arg_count);
+        } else {
+            self.runtime_error("Only instances have methods.");
+            return false;
+        }
+    }
+
+    fn invoke_from_class(&mut self, class: Gc<LoxClass>, method_name: Gc<LoxStr>, arg_count: ArgCount) -> bool {
+        if let Some(method) = class.methods.get(&method_name) {
+            let closure_ptr = method.unwrap_closure();
+            return self.call(closure_ptr, arg_count);
+        } else {
+            self.runtime_error(format!("Undefined property '{}'", method_name));
+            return false;
+        }
+        todo!()
     }
 }
 

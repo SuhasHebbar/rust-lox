@@ -345,6 +345,9 @@ impl<'a> Compiler<'a> {
         if assign && self.match_tt(TokenType::Equal) {
             self.expression();
             self.emit_instruction(Instruction::SetProperty(rhs_in));
+        } else if self.match_tt(TokenType::LeftParen) {
+            let arg_count = self.argument_count();
+            self.emit_instruction(Instruction::Invoke(rhs_in, arg_count));
         } else {
             self.emit_instruction(Instruction::GetProperty(rhs_in));
         }

@@ -64,7 +64,8 @@ pub enum Instruction {
     GetProperty(ConstantIndex),
     SetProperty(ConstantIndex),
 
-    Method(ConstantIndex)
+    Method(ConstantIndex),
+    Invoke(ConstantIndex, ArgCount),
 }
 
 impl Instruction {
