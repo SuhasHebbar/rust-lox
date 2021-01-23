@@ -1,3 +1,5 @@
+use object::{Fields, LoxBoundMethod};
+
 use crate::{
     heap::{Gc, Heap, LoxStr, Obj},
     interpreter::{InterpreterResult, VmInit},
@@ -31,6 +33,7 @@ pub struct Vm {
     pub globals: Globals,
     had_runtime_error: bool,
     pub open_upvalues: Vec<Gc<Upvalue>>,
+    class_init_method: Gc<LoxStr>,
 }
 
 impl Vm {
@@ -59,6 +62,8 @@ impl Vm {
             frame_index: 0,
         });
 
+        let class_init_method = heap.intern_string("init");
+
         Vm {
             heap,
             stack,
@@ -66,6 +71,7 @@ impl Vm {
             globals,
             had_runtime_error: false,
             open_upvalues: Vec::new(),
+            class_init_method,
         }
     }
 
@@ -289,8 +295,11 @@ impl Vm {
                             self.stack.pop();
                             self.stack.push(field_val);
                         } else {
-                            self.runtime_error(format!("Undefined property '{}'.", prop_name));
-                            return InterpreterResult::RuntimeError;
+                            let class = instance.class;
+
+                            if !self.bind_method(class, prop_name) {
+                                return InterpreterResult::RuntimeError;
+                            }
                         }
                     } else {
                         self.runtime_error("Only instances have properties.");
@@ -304,10 +313,14 @@ impl Vm {
                     let set_value = *self.peek(0);
 
                     if let Value::Instance(mut instance) = instance_value {
-                        self.heap.update_allocation(instance, move || {
-                            instance.fields.insert(prop_name, set_value);
-                        }, self);
-                        
+                        self.heap.update_allocation(
+                            instance,
+                            move || {
+                                instance.fields.insert(prop_name, set_value);
+                            },
+                            self,
+                        );
+
                         self.stack.pop();
                         self.stack.pop();
                         self.stack.push(set_value);
@@ -315,6 +328,10 @@ impl Vm {
                         self.runtime_error("Only instances have fields.");
                         return InterpreterResult::RuntimeError;
                     }
+                }
+                Instruction::Method(name_in) => {
+                    let method_name = call_frame.get_value(name_in).unwrap_string();
+                    self.define_method(method_name);
                 }
             };
             call_frame.ip.next();
@@ -376,16 +393,24 @@ impl Vm {
             Value::Class(class) => {
                 let instance = self.heap.manage_gc(LoxInstance::new(class), self);
 
-                for _ in 0..=arg_count {
-                    self.stack.pop();
+                let len = self.stack.len();
+                self.stack[len - 1 - arg_count as usize] = Value::Instance(instance);
+
+                if let Some(closure_val) = class.methods.get(&self.class_init_method) {
+                    let closure_ptr = closure_val.unwrap_closure();
+                    self.call(closure_ptr, arg_count)
+                } else if arg_count != 0 {
+                    self.runtime_error(format!("Expected 0 arguments but got {}", arg_count));
+                    false
+                } else {
+                    true
                 }
-
-                self.stack.push(Value::Instance(instance));
-
-                // Since we skip ip.next after calls we need to add call ip.next for native calls ourselves.
-                self.call_frames.last_mut().unwrap().ip.next();
-
-                true
+            }
+            Value::BoundMethod(bound_method) => {
+                let len = self.stack.len();
+                self.stack[len - 1 - arg_count as usize] = bound_method.receiver;
+                let ret = self.call(bound_method.method, arg_count);
+                ret
             }
             _ => {
                 self.runtime_error("Can only call functions and classes.");
@@ -490,6 +515,34 @@ impl Vm {
                 drop(temp);
                 self.runtime_error(error_msg);
             }
+        }
+    }
+
+    fn define_method(&mut self, str_ptr: Gc<LoxStr>) {
+        let method = *self.peek(0);
+        let mut class = self.peek(1).unwrap_class();
+
+        self.heap.update_allocation(
+            class,
+            move || {
+                class.methods.insert(str_ptr, method);
+            },
+            self,
+        );
+    }
+
+    fn bind_method(&mut self, class: Gc<LoxClass>, method_name: Gc<LoxStr>) -> bool {
+        if let Some(val) = class.methods.get(&method_name) {
+            let closure = val.unwrap_closure();
+            let instance = *self.peek(0);
+            let bound_method = self.heap.manage_gc(LoxBoundMethod::new(closure, instance), self);
+
+            self.stack.pop();
+            self.stack.push(Value::BoundMethod(bound_method));
+            true
+        } else {
+            self.runtime_error(format!("Undefined property {}", method_name));
+            false
         }
     }
 }

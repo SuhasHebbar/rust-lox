@@ -1,4 +1,4 @@
-use std::convert::TryInto;
+use std::{convert::TryInto, todo};
 
 use crate::{
     heap::{Gc, Heap, LoxStr},
@@ -36,6 +36,7 @@ pub struct Compiler<'a> {
     tin: TokenCursor<'a>,
     ctx_stk: Vec<CompilerContext<'a>>,
     curr_ctx: usize,
+    class_ctxs: Vec<ClassContext<'a>>,
     pub heap: Heap,
 }
 
@@ -51,6 +52,7 @@ impl<'a> Compiler<'a> {
             tin: TokenCursor::new(),
             ctx_stk: vec![ctx],
             curr_ctx: 0,
+            class_ctxs: Vec::new(),
             heap,
         }
     }
@@ -162,7 +164,12 @@ impl<'a> Compiler<'a> {
     }
 
     fn emit_return(&mut self) {
-        self.emit_instruction(Instruction::Nil);
+        if cctx!(self).function_type == FunctionType::Initializer {
+            self.emit_instruction(Instruction::GetLocal(0));
+        } else {
+            self.emit_instruction(Instruction::Nil);
+        }
+
         self.emit_instruction(Instruction::Return);
     }
 
@@ -338,6 +345,13 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    pub fn this(&mut self) {
+        if self.class_ctxs.is_empty() {
+            self.error_at_previous("Can't use 'this' outside of a class.");
+        }
+        self.variable(false);
+    }
+
     pub fn variable(&mut self, assign: bool) {
         let arg = self.resolve_local();
 
@@ -496,8 +510,37 @@ impl<'a> Compiler<'a> {
         self.emit_instruction(Instruction::Class(name_in));
         self.define_variable(name_in);
 
+        // Bring class object to top of stack.
+        self.variable(false);
+
+        self.class_ctxs.push(ClassContext::new(&self.tin.pre));
+
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
+
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::EOF) {
+            self.method();
+        }
+
         self.consume(TokenType::RightBrace, "Expect '}' after class body.");
+        
+        // Pop class object from self.variable()
+        self.emit_pop();
+
+        self.class_ctxs.pop();
+    }
+
+    fn method(&mut self) {
+        self.consume(TokenType::Identifier, "Expect method name.");
+        let name_in = self.make_identifier();
+
+        let function_type = if self.tin.pre.description == "init" {
+            FunctionType::Initializer
+        } else {
+            FunctionType::Method
+        }
+
+        self.function(function_type);
+        self.emit_instruction(Instruction::Method(name_in));
     }
 
     pub fn var_declaration(&mut self) {
@@ -574,6 +617,10 @@ impl<'a> Compiler<'a> {
         if self.match_tt(TokenType::SemiColon) {
             self.emit_return();
         } else {
+            if cctx!(self).function_type == FunctionType::Initializer {
+                self.error_at_previous("Can't return a value from an initializer.");
+            }
+
             self.expression();
             self.consume(TokenType::SemiColon, "Expect ';' after return value.");
             self.emit_instruction(Instruction::Return);
@@ -811,13 +858,13 @@ pub struct StackSim<'a> {
 const LOCALS_MAX_CAPACITY: usize = u8::MAX as usize;
 
 impl<'a> StackSim<'a> {
-    fn new() -> Self {
+    fn new(name: &'static str) -> Self {
         let mut locals = Vec::with_capacity(LOCALS_MAX_CAPACITY);
 
         let token = Token {
             line: 0,
             kind: TokenType::Identifier,
-            description: "",
+            description: name,
         };
         locals.push(Local::new(token, 0));
 
@@ -926,10 +973,16 @@ struct CompilerContext<'a> {
 
 impl CompilerContext<'_> {
     fn new(function_type: FunctionType, name: Gc<LoxStr>) -> Self {
+        let this_name = if let FunctionType::Method = function_type {
+            "this"
+        } else {
+            ""
+        };
+
         Self {
             function: LoxFun::new(name),
             function_type,
-            stack_sim: StackSim::new(),
+            stack_sim: StackSim::new(this_name),
             errh: ErrorHandler {
                 had_error: false,
                 panic_mode: false,
@@ -961,5 +1014,17 @@ impl CompilerContext<'_> {
 
     fn emit_pop(&mut self, cursor: &TokenCursor) {
         self.emit_instruction(Instruction::Pop, cursor);
+    }
+}
+
+struct ClassContext<'a> {
+    name: Token<'a>
+}
+
+impl<'a> ClassContext<'a> {
+    fn new(token: &Token<'a>) -> Self {
+        Self {
+            name: token.clone()
+        }
     }
 }

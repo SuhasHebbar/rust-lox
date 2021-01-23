@@ -14,7 +14,7 @@ trait ByteCodeEncodeDecode: Sized {
 }
 use lox_macros::ByteCodeEncodeDecode;
 
-use crate::{heap::{Gc, GreyStack, LoxStr}, native::LoxNativeFun, object::{LoxClass, LoxClosure, LoxFun, LoxInstance}};
+use crate::{heap::{Gc, GreyStack, LoxStr}, native::LoxNativeFun, object::{LoxBoundMethod, LoxClass, LoxClosure, LoxFun, LoxInstance}};
 
 #[derive(Debug, Clone, Copy, ByteCodeEncodeDecode)]
 pub enum Instruction {
@@ -62,7 +62,9 @@ pub enum Instruction {
     Class(ConstantIndex),
 
     GetProperty(ConstantIndex),
-    SetProperty(ConstantIndex)
+    SetProperty(ConstantIndex),
+
+    Method(ConstantIndex)
 }
 
 impl Instruction {
@@ -92,7 +94,8 @@ pub enum Value {
     NativeFunction(Gc<LoxNativeFun>),
     Closure(Gc<LoxClosure>),
     Class(Gc<LoxClass>),
-    Instance(Gc<LoxInstance>)
+    Instance(Gc<LoxInstance>),
+    BoundMethod(Gc<LoxBoundMethod>)
 }
 
 impl Value {
@@ -104,6 +107,7 @@ impl Value {
             Value::Closure(obj_ref) => obj_ref.mark_if_needed(grey_stack),
             Value::Class(class) => class.mark_if_needed(grey_stack),
             Value::Instance(instance) => instance.mark_if_needed(grey_stack),
+            Value::BoundMethod(obj_ref) => obj_ref.mark_if_needed(grey_stack),
             _ => {}
         }
     }
@@ -112,6 +116,31 @@ impl Value {
     pub fn unwrap_string(&self) -> Gc<LoxStr> {
         if let Value::String(string) = self {
             *string
+        } else {
+            unreachable!()
+        }
+    }
+
+    /// To extract a LoxClass from a value known to be of class type.
+    pub fn unwrap_class(&self) -> Gc<LoxClass> {
+        if let Value::Class(class) = self {
+            *class
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn unwrap_closure(&self) -> Gc<LoxClosure> {
+        if let Value::Closure(closure) = self {
+            *closure
+        } else {
+            unreachable!()
+        }
+    }
+
+    pub fn unwrap_instance(&self) -> Gc<LoxInstance> {
+        if let Value::Instance(instance) = self {
+            *instance
         } else {
             unreachable!()
         }
@@ -168,6 +197,7 @@ impl fmt::Display for Value {
             Value::Closure(lox_closure) =>write!(f, "{}", lox_closure.function),
             Value::Class(class) => write!(f, "{:?}", class),
             Value::Instance(instance) => write!(f, "{:?}", instance),
+            Value::BoundMethod(bound_method) =>write!(f, "{}", bound_method.method.function),
         }
     }
 }

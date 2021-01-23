@@ -66,9 +66,11 @@ impl Display for LoxFun {
     }
 }
 
-#[derive(Debug)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum FunctionType {
     Function,
+    Method,
+    Initializer,
     Script,
 }
 
@@ -148,6 +150,8 @@ impl Trace for LoxClosure {
         self.function.mark_if_needed(grey_stack);
         for upvalue in self.upvalues.iter() {
             upvalue.mark_if_needed(grey_stack);
+
+
         }
     }
 
@@ -162,21 +166,30 @@ impl Trace for LoxClosure {
 #[derive(Debug)]
 pub struct LoxClass {
     name: Gc<LoxStr>,
+    pub methods: Fields
 }
 
 impl LoxClass {
     pub fn new(name: Gc<LoxStr>) -> Self {
-        Self { name }
+        Self { name , methods: HashMap::new()}
     }
 }
 
 impl Trace for LoxClass {
     fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
         self.name.mark_if_needed(grey_stack);
+
+        for (k, v) in self.methods.iter() {
+            k.mark_if_needed(grey_stack);
+            v.mark_if_needed(grey_stack);
+        }
     }
 
     fn bytes_allocated(&self) -> usize {
-        mem::size_of::<Self>()
+        let methods_heap_size =
+            self.methods.capacity() * (mem::size_of::<Value>() + mem::size_of::<Gc<LoxStr>>());
+
+        methods_heap_size + mem::size_of::<Self>()
     }
 }
 
@@ -186,6 +199,15 @@ pub type Fields = HashMap<Gc<LoxStr>, Value>;
 pub struct LoxInstance {
     pub class: Gc<LoxClass>,
     pub fields: Fields,
+}
+
+impl LoxInstance {
+    pub fn new (class: Gc<LoxClass>) -> Self {
+        Self {
+            class,
+            fields: HashMap::new(),
+        }
+    }
 }
 
 impl Trace for LoxInstance {
@@ -206,11 +228,29 @@ impl Trace for LoxInstance {
     }
 }
 
-impl LoxInstance {
-    pub fn new (class: Gc<LoxClass>) -> Self {
+#[derive(Debug, Clone, Copy)]
+pub struct LoxBoundMethod {
+    pub method: Gc<LoxClosure>,
+    pub receiver: Value
+}
+
+impl LoxBoundMethod {
+    /// Makes the assumption that the provided receiver is a LoxInstance.
+    pub fn new(method: Gc<LoxClosure>, receiver: Value) -> Self {
         Self {
-            class,
-            fields: HashMap::new()
+            method,
+            receiver
         }
+    }
+}
+
+impl Trace for LoxBoundMethod {
+    fn trace(&self, grey_stack: &mut crate::heap::GreyStack) {
+        self.method.mark_if_needed(grey_stack);
+        self.receiver.mark_if_needed(grey_stack);
+    }
+
+    fn bytes_allocated(&self) -> usize {
+        mem::size_of::<Self>()
     }
 }
