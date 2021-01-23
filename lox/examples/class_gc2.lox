@@ -1,0 +1,15 @@
+class Meow {}
+
+var test = Meow();
+
+{
+	var root = test;
+
+	for (var i = 0; i < 18760; i = i + 1) {
+
+		test.meow = Meow();
+
+		test = test.meow;
+	}
+
+}
