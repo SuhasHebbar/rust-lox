@@ -529,6 +529,8 @@ impl Vm {
             },
             self,
         );
+
+        self.stack.pop();
     }
 
     fn bind_method(&mut self, class: Gc<LoxClass>, method_name: Gc<LoxStr>) -> bool {
@@ -640,4 +642,13 @@ fn runtime_error(
 
 fn get_callframe(call_frames: &mut Vec<CallFrame>) -> &'static mut CallFrame {
     unsafe { mem::transmute(call_frames.last_mut().unwrap()) }
+}
+
+#[cfg(feature = "lox_debug")]
+impl Drop for Vm {
+    fn drop(&mut self) {
+        for val in self.stack.iter() {
+            dbg!(val);
+        }
+    }
 }

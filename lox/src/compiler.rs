@@ -76,7 +76,12 @@ impl<'a> Compiler<'a> {
         {
             let ctx = &cctx!(self);
             eprintln!("Dumping bytecode to console");
-            eprintln!("{:?}: {} \n{}", ctx.function_type, ctx.function.name, &cchunk!(self));
+            eprintln!(
+                "{:?}: {} \n{}",
+                ctx.function_type,
+                ctx.function.name,
+                &cchunk!(self)
+            );
             // if ctx.errh.had_error {
             //     eprintln!("Dumping bytecode to console");
             //     eprintln!("{:?}: {} \n{}", ctx.function_type, ctx.function.name, &cchunk!(self));
@@ -522,7 +527,7 @@ impl<'a> Compiler<'a> {
         }
 
         self.consume(TokenType::RightBrace, "Expect '}' after class body.");
-        
+
         // Pop class object from self.variable()
         self.emit_pop();
 
@@ -537,7 +542,7 @@ impl<'a> Compiler<'a> {
             FunctionType::Initializer
         } else {
             FunctionType::Method
-        }
+        };
 
         self.function(function_type);
         self.emit_instruction(Instruction::Method(name_in));
@@ -973,7 +978,9 @@ struct CompilerContext<'a> {
 
 impl CompilerContext<'_> {
     fn new(function_type: FunctionType, name: Gc<LoxStr>) -> Self {
-        let this_name = if let FunctionType::Method = function_type {
+        let this_name = if function_type == FunctionType::Method
+            || function_type == FunctionType::Initializer
+        {
             "this"
         } else {
             ""
@@ -1018,13 +1025,13 @@ impl CompilerContext<'_> {
 }
 
 struct ClassContext<'a> {
-    name: Token<'a>
+    name: Token<'a>,
 }
 
 impl<'a> ClassContext<'a> {
     fn new(token: &Token<'a>) -> Self {
         Self {
-            name: token.clone()
+            name: token.clone(),
         }
     }
 }
