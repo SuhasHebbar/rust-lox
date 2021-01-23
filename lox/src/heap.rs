@@ -90,6 +90,8 @@ impl Heap {
             key.mark_if_needed(grey_stack);
             value.mark_if_needed(grey_stack);
         }
+
+        vm.class_init_method.mark_if_needed(grey_stack);
     }
 
     fn mark_heap(&self, vm: &Vm) {

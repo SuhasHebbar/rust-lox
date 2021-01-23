@@ -33,7 +33,7 @@ pub struct Vm {
     pub globals: Globals,
     had_runtime_error: bool,
     pub open_upvalues: Vec<Gc<Upvalue>>,
-    class_init_method: Gc<LoxStr>,
+    pub class_init_method: Gc<LoxStr>,
 }
 
 impl Vm {
