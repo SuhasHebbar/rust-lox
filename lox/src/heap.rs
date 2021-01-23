@@ -1,5 +1,5 @@
 /// Currently this is just the bare beginnings of a scaffold for the lox GC.
-use std::{borrow::{Borrow, BorrowMut}, cell::{Cell, RefCell}, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc, todo};
+use std::{borrow::{Borrow, BorrowMut}, cell::{Cell, RefCell}, cmp::max, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc, todo};
 use std::{hash::Hash, mem};
 
 use mem::size_of_val;
@@ -53,7 +53,7 @@ impl Heap {
         self.mark_heap(vm);
         self.sweep_heap();
 
-        let next_gc = self.bytes_allocated.get() * GC_HEAP_GROWTH_FACTOR;
+        let next_gc = max(INITIAL_NEXT_GC, self.bytes_allocated.get() * GC_HEAP_GROWTH_FACTOR);
         self.next_gc.replace(next_gc);
 
         #[cfg(feature = "debug_log_gc")]
