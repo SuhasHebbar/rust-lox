@@ -157,6 +157,12 @@ const THIS_RULE: ParseRule = ParseRule {
     curr_prec: Precedence::None,
 };
 
+const SUPER_RULE: ParseRule = ParseRule {
+    prefix: Some(&|this: &mut Compiler, _assign: bool| this.super_()),
+    infix: None,
+    curr_prec: Precedence::None,
+};
+
 pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
     match token_type {
         TokenType::LeftParen => &LEFT_PAREN_RULE,
@@ -176,6 +182,7 @@ pub fn parse_rule(token_type: TokenType) -> &'static ParseRule {
         TokenType::Or => &OR_RULE,
         TokenType::Dot => &DOT_RULE,
         TokenType::This => &THIS_RULE,
+        TokenType::Super => &SUPER_RULE,
         _ => &PLACEHOLDER_PARSERULE,
     }
 }

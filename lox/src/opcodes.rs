@@ -68,6 +68,7 @@ pub enum Instruction {
     Invoke(ConstantIndex, ArgCount),
 
     Inherit,
+    GetSuper(ConstantIndex),
 }
 
 impl Instruction {

@@ -353,6 +353,14 @@ impl Vm {
                     // Pop the sub class from the stack but leave the super class.
                     self.stack.pop();
                 }
+                Instruction::GetSuper(method_name_in) => {
+                    let method_name = call_frame.get_value(method_name_in).unwrap_string();
+                    let super_class = self.stack.pop().unwrap().unwrap_class();
+
+                    if !self.bind_method(super_class, method_name) {
+                        return InterpreterResult::RuntimeError;
+                    }
+                }
             };
             call_frame.ip.next();
 
