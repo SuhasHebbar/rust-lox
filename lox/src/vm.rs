@@ -7,13 +7,7 @@ use crate::{
     object::{self, FunctionType, LoxClass, LoxClosure, LoxFun, LoxInstance, Upvalue},
     opcodes::{ArgCount, Chunk, ChunkIterator, ConstantIndex, Instruction, Number, Value},
 };
-use std::{
-    collections::HashMap,
-    convert::{TryFrom, TryInto},
-    iter::Peekable,
-    mem,
-    ops::{Add, Div, Mul, Sub},
-};
+use std::{collections::HashMap, convert::{TryFrom, TryInto}, iter::Peekable, mem, ops::{Add, Div, Mul, Sub}};
 use std::{time, todo};
 
 const FRAMES_MIN_SIZE: usize = 64;
@@ -341,6 +335,23 @@ impl Vm {
 
                     call_frame = get_callframe(&mut self.call_frames);
                     continue;
+                }
+                Instruction::Inherit => {
+                    let super_class = if let Value::Class(class) = self.peek(1) {
+                        *class
+                    } else {
+                        self.runtime_error("Superclass must be a class.");
+                        return InterpreterResult::RuntimeError;
+                    };
+
+                    let mut sub_class = self.peek(0).unwrap_class();
+
+                    for (name, method) in super_class.methods.iter() {
+                        sub_class.methods.insert(*name, *method);
+                    }
+
+                    // Pop the sub class from the stack but leave the super class.
+                    self.stack.pop();
                 }
             };
             call_frame.ip.next();

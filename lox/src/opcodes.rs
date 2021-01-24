@@ -66,6 +66,8 @@ pub enum Instruction {
 
     Method(ConstantIndex),
     Invoke(ConstantIndex, ArgCount),
+
+    Inherit,
 }
 
 impl Instruction {

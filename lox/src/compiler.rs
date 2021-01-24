@@ -1,4 +1,4 @@
-use std::{convert::TryInto, todo};
+use std::{convert::{TryInto, identity}, todo};
 
 use crate::{
     heap::{Gc, Heap, LoxStr},
@@ -360,7 +360,7 @@ impl<'a> Compiler<'a> {
         self.variable(false);
     }
 
-    pub fn variable(&mut self, assign: bool) {
+    fn named_variable(&mut self, name: &str, assign: bool) {
         let arg = self.resolve_local();
 
         let set_op;
@@ -389,7 +389,12 @@ impl<'a> Compiler<'a> {
         } else {
             self.emit_instruction(get_op);
         }
+ 
     }
+
+    pub fn variable(&mut self, assign: bool) {
+        self.named_variable(self.tin.pre.description, assign);
+   }
 
     fn resolve_upvalue(&mut self, ctx_in: usize) -> Option<StackIndex> {
         if ctx_in == 0 {
@@ -512,16 +517,32 @@ impl<'a> Compiler<'a> {
 
     fn class_declaration(&mut self) {
         self.consume(TokenType::Identifier, "Expect class name.");
-        let name_in = self.make_identifier();
+        let class_name_in = self.make_identifier();
         self.declare_variable();
 
-        self.emit_instruction(Instruction::Class(name_in));
-        self.define_variable(name_in);
+        self.emit_instruction(Instruction::Class(class_name_in));
+        self.define_variable(class_name_in);
 
         // Bring class object to top of stack.
-        self.variable(false);
+        // let load_class_instr = self.variable(false);
 
-        self.class_ctxs.push(ClassContext::new(&self.tin.pre));
+        let class_name_token = self.tin.pre;
+        self.class_ctxs.push(ClassContext::new(&class_name_token));
+
+        if self.match_tt(TokenType::Less) {
+            self.consume(TokenType::Identifier , "Expect superclass name.");
+
+            // Put parent class object onto stack.
+            self.variable(false);
+
+            if class_name_token.description == self.tin.pre.description {
+                self.error_at_previous("A class can't inherit from itself.");
+            }
+
+            // self.emit_instruction(load_class_instr);
+
+            self.emit_instruction(Instruction::Inherit);
+        }
 
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
 
