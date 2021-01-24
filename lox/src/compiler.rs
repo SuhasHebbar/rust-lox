@@ -369,15 +369,24 @@ impl<'a> Compiler<'a> {
         } else if !self.class_ctxs.last().unwrap().has_superclass {
             self.error_at_previous("Can't use 'super' in a class with no superclass.");
         }
-        
+
         self.consume(TokenType::Dot, "Expect '.' after 'super'.");
         self.consume(TokenType::Identifier, "Expect superclass method name.");
 
         let method_name_in = self.make_identifier();
 
         self.named_variable("this", false);
-        self.named_variable("super", false);
-        self.emit_instruction(Instruction::GetSuper(method_name_in));
+        
+        if self.match_tt(TokenType::LeftParen) {
+            let arg_count = self.argument_count();
+
+            self.named_variable("super", false);
+            self.emit_instruction(Instruction::SuperInvoke(method_name_in, arg_count));
+        } else {
+            self.named_variable("super", false);
+            self.emit_instruction(Instruction::GetSuper(method_name_in));
+        }
+
     }
 
     pub fn this(&mut self) {

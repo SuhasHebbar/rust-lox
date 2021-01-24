@@ -361,6 +361,16 @@ impl Vm {
                         return InterpreterResult::RuntimeError;
                     }
                 }
+                Instruction::SuperInvoke(method_name_in, arg_count) => {
+                    let method_name = call_frame.get_value(method_name_in).unwrap_string();
+                    let super_class = self.stack.pop().unwrap().unwrap_class();
+
+                    if !self.invoke_from_class(super_class, method_name, arg_count) {
+                        return InterpreterResult::RuntimeError;
+                    }
+
+                    call_frame = get_callframe(&mut self.call_frames);
+                }
             };
             call_frame.ip.next();
 
@@ -597,7 +607,6 @@ impl Vm {
             self.runtime_error(format!("Undefined property '{}'", method_name));
             return false;
         }
-        todo!()
     }
 }
 
