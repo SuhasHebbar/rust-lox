@@ -1,0 +1,12 @@
+class Hello {
+	doNothing() {
+		return 1;
+	}
+}
+
+var hello = Hello();
+
+for (var i = 0; i < 60000; i = i + 1) {
+	var doNothing = hello.doNothing;
+	doNothing();
+}
