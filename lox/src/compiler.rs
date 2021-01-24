@@ -847,7 +847,7 @@ impl<'a> Compiler<'a> {
             cchunk!(self)
                 // + 1 ensures that the ByteCodeIndex is written into the jump offset
                 // not overrwriting in Instr Opcode
-                .patch_bytecode_index(patch_loc + 1, patch as ByteCodeOffset);
+                .patch_bytecode_index(patch_loc, patch as ByteCodeOffset);
         } else {
             cctx!(self)
                 .errh

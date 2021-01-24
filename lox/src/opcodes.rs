@@ -85,7 +85,7 @@ impl Instruction {
 
 #[derive(Debug, Clone)]
 pub struct Chunk {
-    code: Vec<u8>,
+    code: Vec<Instruction>,
     lines: Vec<usize>,
     values: Vec<Value>,
 }
@@ -171,21 +171,19 @@ impl From<Gc<LoxStr>> for Value {
     }
 }
 
-pub struct ChunkIterator<'a>(usize, &'a [u8]);
+pub struct ChunkIterator<'a>(usize, &'a [Instruction]);
 
 impl Iterator for ChunkIterator<'_> {
     type Item = (usize, Instruction);
     fn next(&mut self) -> Option<Self::Item> {
-        if self.1.is_empty() {
+        if self.1.len() == self.0 {
             None
         } else {
             let curr_instr_index = self.0;
-            let prev_ptr = self.1.as_ptr() as usize;
-            let instr = Instruction::decode(&mut self.1);
-            let delta = self.1.as_ptr() as usize - prev_ptr;
-            self.0 += delta;
+            let instr = unsafe {self.1.get_unchecked(self.0)};
+            self.0 += 1;
 
-            Some((curr_instr_index, instr))
+            Some((curr_instr_index, *instr))
         }
     }
 }
@@ -233,14 +231,25 @@ impl Chunk {
     }
 
     pub fn patch_bytecode_index(&mut self, loc: usize, value: ByteCodeOffset) {
-        self.code[loc..loc + 2].copy_from_slice(&value.to_ne_bytes()[..]);
+        let instr = self.code[loc];
+        
+        let new_instr = match instr {
+            Instruction::JumpForward(_) => {
+                Instruction::JumpForward(value)
+            }
+            Instruction::JumpFwdIfFalse(_) => {
+                Instruction::JumpFwdIfFalse(value)
+            }
+            _ => unreachable!()
+        };
 
+        self.code[loc] = new_instr;
     }
 
     // TODO: Add method to add multiple instructions. Maybe reserve space in vector in advance.
 
     pub fn add_instruction(&mut self, instr: Instruction, line: usize) {
-        instr.encode(&mut self.code);
+        self.code.push(instr);
 
         // Add line number to each new byte added via instr.encode.
         self.lines.resize(self.code.len(), line);
@@ -260,7 +269,7 @@ impl Chunk {
     }
 
     pub fn instr_iter_jump(&self, jump_loc: usize) -> ChunkIterator {
-        ChunkIterator(jump_loc, &self.code[jump_loc..])
+        ChunkIterator(jump_loc, &self.code[..])
     }
 
     pub fn disassemble_instruction(&self, index: usize, instr: &Instruction) -> String {
