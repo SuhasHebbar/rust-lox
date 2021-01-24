@@ -152,6 +152,16 @@ impl<'a> Compiler<'a> {
         ctx.stack_sim.add_local(self.tin.pre);
     }
 
+    fn add_specified_local(&mut self, name: Token<'a>) {
+        let ctx = &mut cctx!(self);
+        if ctx.stack_sim.size() == LOCALS_MAX_CAPACITY {
+            self.error_at_previous("Too many local variables in function.");
+            return;
+        }
+
+        ctx.stack_sim.add_local(name);
+    }
+
     fn error_at_current(&mut self, message: &str) {
         cctx!(self).errh.error_at_current(&self.tin, message);
     }
@@ -361,7 +371,7 @@ impl<'a> Compiler<'a> {
     }
 
     fn named_variable(&mut self, name: &str, assign: bool) {
-        let arg = self.resolve_local();
+        let arg = self.resolve_local(name);
 
         let set_op;
         let get_op;
@@ -370,13 +380,13 @@ impl<'a> Compiler<'a> {
             get_op = Instruction::GetLocal(arg);
             set_op = Instruction::SetLocal(arg);
         } else {
-            let upvalue = self.resolve_upvalue(self.ctx_stk.len() - 1);
+            let upvalue = self.resolve_upvalue(self.ctx_stk.len() - 1, name);
 
             if let Some(upvalue) = upvalue {
                 get_op = Instruction::GetUpvalue(upvalue);
                 set_op = Instruction::SetUpvalue(upvalue);
             } else {
-                let var_index = self.make_identifier();
+                let var_index = self.make_identifier_from_name(name);
                 set_op = Instruction::SetGlobal(var_index);
                 get_op = Instruction::GetGlobal(var_index);
             }
@@ -396,14 +406,14 @@ impl<'a> Compiler<'a> {
         self.named_variable(self.tin.pre.description, assign);
    }
 
-    fn resolve_upvalue(&mut self, ctx_in: usize) -> Option<StackIndex> {
+    fn resolve_upvalue(&mut self, ctx_in: usize, name: &str) -> Option<StackIndex> {
         if ctx_in == 0 {
             return None;
         }
 
         let enclosing_ctx = &mut self.ctx_stk[ctx_in - 1];
 
-        let local = enclosing_ctx.resolve_local(&self.tin);
+        let local = enclosing_ctx.resolve_local(&self.tin, name);
 
         if let Some(local_index) = local {
             enclosing_ctx.stack_sim.locals[local_index as usize].captured = true;
@@ -411,7 +421,7 @@ impl<'a> Compiler<'a> {
             return self.add_upvalue(ctx_in, local);
         }
 
-        let upvalue = self.resolve_upvalue(ctx_in - 1);
+        let upvalue = self.resolve_upvalue(ctx_in - 1, name);
 
         if let Some(upvalue) = upvalue {
             let upvalue = UpvalueSim::Upvalue(upvalue);
@@ -434,8 +444,8 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn resolve_local(&mut self) -> Option<StackIndex> {
-        cctx!(self).resolve_local(&self.tin)
+    fn resolve_local(&mut self, name: &str) -> Option<StackIndex> {
+        cctx!(self).resolve_local(&self.tin, name)
     }
 
     fn fun_declaration(&mut self) {
@@ -515,6 +525,14 @@ impl<'a> Compiler<'a> {
         }
     }
 
+    fn synthetic_token(&mut self, name: &'static str) -> Token<'a> {
+        Token {
+            kind: TokenType::Identifier,
+            line: 0,
+            description: name
+        }
+    }
+
     fn class_declaration(&mut self) {
         self.consume(TokenType::Identifier, "Expect class name.");
         let class_name_in = self.make_identifier();
@@ -523,14 +541,16 @@ impl<'a> Compiler<'a> {
         self.emit_instruction(Instruction::Class(class_name_in));
         self.define_variable(class_name_in);
 
-        // Bring class object to top of stack.
-        // let load_class_instr = self.variable(false);
-
         let class_name_token = self.tin.pre;
         self.class_ctxs.push(ClassContext::new(&class_name_token));
 
         if self.match_tt(TokenType::Less) {
             self.consume(TokenType::Identifier , "Expect superclass name.");
+
+            self.begin_scope();
+            let synthetic_token = self.synthetic_token("super");
+            self.add_specified_local(synthetic_token);
+            self.define_variable(0);
 
             // Put parent class object onto stack.
             self.variable(false);
@@ -539,10 +559,14 @@ impl<'a> Compiler<'a> {
                 self.error_at_previous("A class can't inherit from itself.");
             }
 
-            // self.emit_instruction(load_class_instr);
-
+            self.named_variable(class_name_token.description, false);
             self.emit_instruction(Instruction::Inherit);
+
+            self.class_ctxs.last_mut().unwrap().has_superclass = true;
         }
+
+        
+        self.named_variable(class_name_token.description, false);
 
         self.consume(TokenType::LeftBrace, "Expect '{' before class body.");
 
@@ -555,6 +579,9 @@ impl<'a> Compiler<'a> {
         // Pop class object from self.variable()
         self.emit_pop();
 
+        if self.class_ctxs.last().unwrap().has_superclass {
+            self.end_scope();
+        }
         self.class_ctxs.pop();
     }
 
@@ -631,9 +658,13 @@ impl<'a> Compiler<'a> {
         self.add_local();
     }
 
-    fn make_identifier(&mut self) -> ConstantIndex {
-        let lox_str = self.heap.intern_string(self.tin.pre.description);
+    fn make_identifier_from_name(&mut self, name: &str) -> ConstantIndex {
+        let lox_str = self.heap.intern_string(name);
         Self::make_constant(&mut cctx!(self), Value::String(lox_str), &self.tin)
+    }
+
+    fn make_identifier(&mut self) -> ConstantIndex {
+        self.make_identifier_from_name(self.tin.pre.description)
     }
 
     fn return_statement(&mut self) {
@@ -1022,9 +1053,9 @@ impl CompilerContext<'_> {
         }
     }
 
-    fn resolve_local(&mut self, cursor: &TokenCursor) -> Option<StackIndex> {
+    fn resolve_local(&mut self, cursor: &TokenCursor, name: &str) -> Option<StackIndex> {
         for (i, local) in self.stack_sim.locals.iter().enumerate().rev() {
-            if local.name.description == cursor.pre.description {
+            if local.name.description == name {
                 if local.depth == -1 {
                     self.errh.error_at_previous(
                         cursor,
@@ -1050,12 +1081,14 @@ impl CompilerContext<'_> {
 
 struct ClassContext<'a> {
     name: Token<'a>,
+    has_superclass: bool
 }
 
 impl<'a> ClassContext<'a> {
     fn new(token: &Token<'a>) -> Self {
         Self {
             name: token.clone(),
+            has_superclass: false,
         }
     }
 }
