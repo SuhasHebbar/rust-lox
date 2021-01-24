@@ -363,6 +363,7 @@ impl Vm {
                 }
                 Instruction::SuperInvoke(method_name_in, arg_count) => {
                     let method_name = call_frame.get_value(method_name_in).unwrap_string();
+                    dbg!(&self.stack);
                     let super_class = self.stack.pop().unwrap().unwrap_class();
 
                     if !self.invoke_from_class(super_class, method_name, arg_count) {
@@ -370,6 +371,7 @@ impl Vm {
                     }
 
                     call_frame = get_callframe(&mut self.call_frames);
+                    continue;
                 }
             };
             call_frame.ip.next();
