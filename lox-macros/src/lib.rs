@@ -121,20 +121,29 @@ fn gen_decode(enum_: &Ident, variants: &Vec<(&Ident, Vec<&Ident>)>) -> proc_macr
             quote! {
                 #i => {
                     #(#field_setters)*
-                    (#enum_::#ident #enum_args, slice_ptr)
+                    #enum_::#ident #enum_args
                 }
             }
         })
         .collect();
 
     quote! {
-        fn decode(src: &[u8]) -> (Self, &[u8]) {
-            let mut slice_ptr = &src[1..];
-            let byte = src[0];
-            match byte {
+        fn decode(src: &mut &[u8]) -> Self {
+            let mut slice_ptr;
+            let byte;
+
+            unsafe {
+                slice_ptr = src.get_unchecked(1..);
+                byte = src.get_unchecked(0);
+            }
+
+            let instr = match byte {
                 #(#match_arms),*,
                 _ => {panic!("Invalid instruction byte code")}
-            }
+            };
+
+            *src = slice_ptr;
+            instr
         }
     }
 }

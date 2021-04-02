@@ -1,5 +1,6 @@
 use fmt::{Display, Formatter, Debug};
-use std::{convert::{TryFrom, TryInto}, error::Error, fmt, todo};
+use std::{convert::TryFrom, error::Error, fmt};
+use std::mem;
 
 
 pub type Number = f64;
@@ -10,7 +11,7 @@ pub type UpValueIndex = u8;
 
 trait ByteCodeEncodeDecode: Sized {
     fn encode(&self, dest: &mut Vec<u8>);
-    fn decode(src: &[u8]) -> (Self, &[u8]);
+    fn decode(src: &mut &[u8]) -> Self;
 }
 use lox_macros::ByteCodeEncodeDecode;
 
@@ -180,8 +181,7 @@ impl Iterator for ChunkIterator<'_> {
         } else {
             let curr_instr_index = self.0;
             let prev_ptr = self.1.as_ptr() as usize;
-            let (instr, tmp) = Instruction::decode(self.1);
-            self.1 = tmp;
+            let instr = Instruction::decode(&mut self.1);
             let delta = self.1.as_ptr() as usize - prev_ptr;
             self.0 += delta;
 
@@ -306,28 +306,25 @@ trait Decode {
 
 impl Decode for u32 {
     fn decode(slice_ptr: &mut &[u8]) -> Self {
-        let (val, tmp) = slice_ptr.split_at(4);
-        *slice_ptr = tmp;
-        let val: [u8; 4] = val.try_into().expect("slice of incorrect length.");
-        return u32::from_ne_bytes(val);
+        let val = unsafe { mem::transmute::<*const u8, &[u8; 4]>(slice_ptr.as_ptr())};
+        *slice_ptr = unsafe { slice_ptr.get_unchecked(4..)};
+        return u32::from_ne_bytes(*val);
     }
 }
 
 impl Decode for u16 {
     fn decode(slice_ptr: &mut &[u8]) -> Self {
-        let (val, tmp) = slice_ptr.split_at(2);
-        *slice_ptr = tmp;
-        let val: [u8; 2] = val.try_into().expect("slice of incorrect length.");
-        return u16::from_ne_bytes(val);
+        let val = unsafe { mem::transmute::<*const u8, &[u8; 2]>(slice_ptr.as_ptr())};
+        *slice_ptr = unsafe { slice_ptr.get_unchecked(2..)};
+        return u16::from_ne_bytes(*val);
     }
 }
 
 impl Decode for u8 {
     fn decode(slice_ptr: &mut &[u8]) -> Self {
-        let (val, tmp) = slice_ptr.split_at(1);
-        *slice_ptr = tmp;
-        let val: [u8; 1] = val.try_into().expect("slice of incorrect length.");
-        return u8::from_ne_bytes(val);
+        let val = unsafe { mem::transmute::<*const u8, &[u8; 1]>(slice_ptr.as_ptr())};
+        *slice_ptr = unsafe { slice_ptr.get_unchecked(1..)};
+        return u8::from_ne_bytes(*val);
     }
 }
 

@@ -1,0 +1,3 @@
+{
+    "rust-analyzer.cargo.features": ["lox_debug", "debug_stress_gc", "debug_log_gc"]
+}
