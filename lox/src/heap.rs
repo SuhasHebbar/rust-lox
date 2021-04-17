@@ -1,5 +1,5 @@
 /// Currently this is just the bare beginnings of a scaffold for the lox GC.
-use std::{borrow::{Borrow, BorrowMut}, cell::{Cell, RefCell}, cmp::max, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::Hasher, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc, todo};
+use std::{borrow::{Borrow, BorrowMut}, cell::{Cell, RefCell}, cmp::max, collections::{HashMap, HashSet}, fmt::{self, Display, Formatter}, hash::{BuildHasher, Hasher}, ops::{Deref, DerefMut}, ptr::NonNull, rc::Rc, todo};
 use std::{hash::Hash, mem};
 
 use mem::size_of_val;
@@ -12,7 +12,7 @@ const GC_HEAP_GROWTH_FACTOR: usize = 2;
 const INITIAL_NEXT_GC: usize = 1024 * 1024;
 
 pub struct Heap {
-    interned_strs: RefCell<HashMap<&'static LoxStr, Box<Obj<LoxStr>>>>,
+    interned_strs: RefCell<HashSet<Box<Obj<LoxStr>>, NoOpHasherBuilder>>,
     objects: RefCell<Vec<Box<dyn HeapObj>>>,
     grey_stack: RefCell<GreyStack>,
     bytes_allocated: Cell<usize>,
@@ -22,7 +22,7 @@ pub struct Heap {
 impl Heap {
     pub fn new() -> Self {
         Self {
-            interned_strs: RefCell::new(HashMap::new()),
+            interned_strs: RefCell::new(HashSet::with_hasher(NoOpHasherBuilder())),
             objects: RefCell::new(Vec::new()),
             grey_stack: RefCell::new(Vec::new()),
             bytes_allocated: Cell::new(0),
@@ -119,10 +119,10 @@ impl Heap {
 
         let mut interned_strs = self.interned_strs.borrow_mut();
 
-        interned_strs.retain(|k, v| v.is_marked());
+        interned_strs.retain(|v| v.is_marked());
 
         let mut strs_size = 0;
-        for (k, v) in interned_strs.iter_mut() {
+        for v in interned_strs.iter() {
             v.unmark();
             strs_size += v.bytes_allocated();
 
@@ -173,16 +173,16 @@ impl Heap {
     // This is separated from intern_string to avoid Generic impl duplication.
     fn intern_string_internal(&self, string: LoxStr) -> Gc<LoxStr> {
         let mut interned_strs = self.interned_strs.borrow_mut();
-        let heapobj = interned_strs.get_mut(&string);
+        let heapobj = interned_strs.get(&string);
 
         let obj_ptr;
 
         if let Some(heapobj) = heapobj {
-            obj_ptr = heapobj.as_mut() as *mut Obj<LoxStr>;
+            obj_ptr = heapobj.as_ref() as *const Obj<LoxStr> as *mut Obj<LoxStr>;
         } else {
-            drop(heapobj);
-            drop(interned_strs);
-            let mut boxed = Box::new(Obj::new(string));
+            // drop(heapobj);
+            // drop(interned_strs);
+            let mut boxed= Box::new(Obj::new(string));
             obj_ptr = boxed.as_mut() as *mut Obj<LoxStr>;
 
             // Update bytes allocated
@@ -194,9 +194,7 @@ impl Heap {
                 "Allocate {:?}, size = {}, type = {}",
                 obj_ptr, bytes_allocated, "LoxStr"
             );
-
-            let new_key = unsafe { mem::transmute(&boxed.data) };
-            self.interned_strs.borrow_mut().insert(new_key, boxed);
+            interned_strs.insert(boxed);
         }
         Gc::from(obj_ptr)
     }
@@ -235,12 +233,16 @@ impl<T: Trace> HeapObj for Obj<T> {
         self.marked
     }
 
-    fn mark(&mut self) {
-        self.marked = true;
+    fn mark(&self) {
+        unsafe {
+            (*(self as *const Self as *mut Self)).marked = true;
+        }
     }
 
-    fn unmark(&mut self) {
-        self.marked = false;
+    fn unmark(&self) {
+        unsafe {
+            (*(self as *const Self as *mut Self)).marked = false;
+        }
     }
 
     fn bytes_allocated(&self) -> usize {
@@ -261,10 +263,20 @@ impl<T> Hash for Obj<T>
 where
     T: Hash + Trace,
 {
+    #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.data.hash(state);
     }
 }
+
+impl<T> PartialEq for Obj<T> where T: PartialEq + Trace {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.eq(other)
+    }
+}
+
+impl<T> Eq for Obj<T> where T: Eq + Trace {}
 
 #[derive(Debug, Hash, PartialEq, Eq)]
 pub struct Gc<T: 'static + Trace> {
@@ -372,9 +384,10 @@ where
 
 // Adding wrapper since this will me add a cached hash of the string later without
 // changing rest of the code.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Eq)]
 pub struct LoxStr {
     val: Box<str>,
+    hash: u64
 }
 
 impl LoxStr {
@@ -387,12 +400,19 @@ impl LoxStr {
     }
 }
 
-// impl From<String> for LoxStr {
-//     fn from(val: String) -> Self {
-//         let val: Box<str> = val.into();
-//         Self {val}
-//     }
-// }
+impl Hash for LoxStr {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // Feed pre-calculated hash to Hasher.
+        self.hash.hash(state);
+    }
+}
+
+impl PartialEq for LoxStr {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.val == other.val
+    }
+}
 
 impl Display for LoxStr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -406,7 +426,8 @@ where
 {
     fn from(val: T) -> Self {
         let val: Box<str> = val.into();
-        Self { val }
+        let hash = fnv_hash(&val);
+        Self { val, hash }
     }
 }
 
@@ -442,8 +463,8 @@ impl Trace for LoxStr {
 
 pub trait HeapObj: 'static {
     fn is_marked(&self) -> bool;
-    fn mark(&mut self);
-    fn unmark(&mut self);
+    fn mark(&self);
+    fn unmark(&self);
 
     fn bytes_allocated(&self) -> usize;
 }
@@ -452,4 +473,55 @@ pub trait Trace {
     fn trace(&self, grey_stack: &mut GreyStack);
 
     fn bytes_allocated(&self) -> usize;
+}
+
+#[inline]
+fn fnv_hash(input: &str) -> u64 {
+    const OFFSET_BASIS: u64 = 14695981039346656037;
+    const FNV_PRIME: u64 = 1099511628211;
+
+    let mut hash = OFFSET_BASIS;
+    for byte in input.bytes() {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+
+    hash
+}
+
+// NoOpHasher does not hash by itself but can be fed a pre-calculated u64 hash value.
+struct NoOpHasher(u64);
+
+impl Hasher for NoOpHasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, _bytes: &[u8]) {
+        unimplemented!()
+    }
+
+    #[inline]
+    fn write_u64(&mut self, i: u64) {
+        self.0 = i;
+    }
+}
+
+struct NoOpHasherBuilder();
+
+impl BuildHasher for NoOpHasherBuilder {
+    type Hasher = NoOpHasher;
+
+    #[inline]
+    fn build_hasher(&self) -> Self::Hasher {
+        NoOpHasher(0)
+    }
+}
+
+impl<T> Borrow<T> for Box<Obj<T>> where T: Trace {
+    #[inline]
+    fn borrow(&self) -> &T {
+        &self.data
+    }
 }
